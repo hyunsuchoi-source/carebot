@@ -274,12 +274,11 @@ function detectRiskDetailState(text: string): RiskDetailState {
 function buildRuleBasedLinkageReply(
   finalRisk: RiskLevel,
 ): RuleBasedReply {
-
   if (finalRisk !== "low") {
     return {
       handled: true,
       linkageIntent: "ask_center_use",
-      reply: "현재 정신건강복지센터나 상담기관을 이용 중이신가요?",
+      reply: "도움 연결을 위해 한 가지만 확인할게요. 현재 정신건강복지센터나 상담기관을 이용 중이신가요?",
       quickReplies: [
         {
           label: "이용 중이에요",
@@ -288,6 +287,10 @@ function buildRuleBasedLinkageReply(
         {
           label: "이용하지 않아요",
           value: "center_use_no",
+        },
+        {
+          label: "잘 모르겠어요",
+          value: "center_use_unknown",
         },
       ],
     };
@@ -886,85 +889,113 @@ Deno.serve(async (req) => {
           alertTriggered: false,
           conversationEnded: false,
           turnCount: 0,
+          quickReplies: [],
+          linkageIntent: "none",
+          ruleBasedHandled: false,
           sessionStartTime: session_start_time ?? new Date().toISOString(),
         }),
         { status: 200, headers: corsHeaders }
       );
     }
 
-if (message === "center_use_yes") {
-  return new Response(
-    JSON.stringify({
-      reply:
-        "현재 이용 중인 기관이 있다면 그곳의 담당자에게 지금 상태를 알리는 것이 좋아요. 필요하면 담당 사회복지사에게도 내용을 전달할게요.",
-      quickReplies: [],
-      linkageIntent: "center_use_yes",
-      ruleBasedHandled: true,
-    }),
-    {
-      status: 200,
-      headers: corsHeaders,
-    }
-  );
-}
-
-if (message === "center_use_no" || message === "center_use_unknown") {
-  return new Response(
-    JSON.stringify({
-      reply:
-        "그렇다면 도움받을 수 있는 지역사회 자원을 연결해드릴 수 있어요. 연계에 동의하시나요?",
-      linkageIntent: "ask_local_resource_consent",
-      ruleBasedHandled: true,
-      quickReplies: [
-        {
-          label: "동의해요",
-          value: "consent_yes",
-        },
-        {
-          label: "동의하지 않아요",
-          value: "consent_no",
-        },
-      ],
-    }),
-    {
-      status: 200,
-      headers: corsHeaders,
-    }
-  );
-}
-
-if (message === "consent_yes") {
-  return new Response(
-    JSON.stringify({
-      reply:
-        "알겠습니다. 거주 지역을 확인한 후 담당 사회복지사에게 연계 준비를 알릴게요.",
-      quickReplies: [],
-      linkageIntent: "local_resource_consent_yes",
-      ruleBasedHandled: true,
-    }),
-    {
-      status: 200,
-      headers: corsHeaders,
-    }
-  );
-}
-
-if (message === "consent_no") {
-  return new Response(
-    JSON.stringify({
-      reply:
-        "알겠습니다. 연계는 진행하지 않을게요. 다만 필요할 때는 언제든 도움을 요청할 수 있어요.",
-      quickReplies: [],
-      linkageIntent: "local_resource_consent_no",
-      ruleBasedHandled: true,
-    }),
-    {
-      status: 200,
-      headers: corsHeaders,
-    }
-  );
-}
     const turnCount = getTurnCount(conversationHistory);
+
+    if (message === "center_use_yes") {
+      return new Response(
+        JSON.stringify({
+          reply:
+            "현재 이용 중인 기관이 있다면 그곳의 담당자에게 지금 상태를 알리는 것이 좋아요. 필요하면 담당 사회복지사에게도 내용을 전달할게요.",
+          currentDetectedRisk: "low",
+          assessmentDetectedRisk: "low",
+          finalDetectedRisk: "low",
+          latestScores: { phq9: null, gad7: null, sbqr: null },
+          matchedGuidelines: [],
+          alertTriggered: false,
+          conversationEnded: false,
+          turnCount,
+          quickReplies: [],
+          linkageIntent: "center_use_yes",
+          ruleBasedHandled: true,
+          sessionStartTime: session_start_time ?? new Date().toISOString(),
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
+    if (message === "center_use_no" || message === "center_use_unknown") {
+      return new Response(
+        JSON.stringify({
+          reply:
+            "그렇다면 도움받을 수 있는 지역사회 자원을 연결해드릴 수 있어요. 연계에 동의하시나요?",
+          currentDetectedRisk: "low",
+          assessmentDetectedRisk: "low",
+          finalDetectedRisk: "low",
+          latestScores: { phq9: null, gad7: null, sbqr: null },
+          matchedGuidelines: [],
+          alertTriggered: false,
+          conversationEnded: false,
+          turnCount,
+          linkageIntent: "ask_local_resource_consent",
+          ruleBasedHandled: true,
+          quickReplies: [
+            {
+              label: "동의해요",
+              value: "consent_yes",
+            },
+            {
+              label: "동의하지 않아요",
+              value: "consent_no",
+            },
+          ],
+          sessionStartTime: session_start_time ?? new Date().toISOString(),
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
+    if (message === "consent_yes") {
+      return new Response(
+        JSON.stringify({
+          reply:
+            "알겠습니다. 거주 지역을 확인한 후 담당 사회복지사에게 연계 준비를 알릴게요.",
+          currentDetectedRisk: "low",
+          assessmentDetectedRisk: "low",
+          finalDetectedRisk: "low",
+          latestScores: { phq9: null, gad7: null, sbqr: null },
+          matchedGuidelines: [],
+          alertTriggered: false,
+          conversationEnded: false,
+          turnCount,
+          quickReplies: [],
+          linkageIntent: "local_resource_consent_yes",
+          ruleBasedHandled: true,
+          sessionStartTime: session_start_time ?? new Date().toISOString(),
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
+    if (message === "consent_no") {
+      return new Response(
+        JSON.stringify({
+          reply:
+            "알겠습니다. 연계는 진행하지 않을게요. 다만 필요할 때는 언제든 도움을 요청할 수 있어요.",
+          currentDetectedRisk: "low",
+          assessmentDetectedRisk: "low",
+          finalDetectedRisk: "low",
+          latestScores: { phq9: null, gad7: null, sbqr: null },
+          matchedGuidelines: [],
+          alertTriggered: false,
+          conversationEnded: false,
+          turnCount,
+          quickReplies: [],
+          linkageIntent: "local_resource_consent_no",
+          ruleBasedHandled: true,
+          sessionStartTime: session_start_time ?? new Date().toISOString(),
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
 
     if (turnCount > MAX_TURNS) {
       return new Response(
@@ -1051,6 +1082,8 @@ if (message === "consent_no") {
       ? isFinalTurn
       : isFinalTurn && (finalDetectedRisk === "high" || finalDetectedRisk === "imminent");
 
+    // imminent도 다른 non-low 위험도와 동일하게 정신건강복지센터 이용 여부 확인 로직으로 진행합니다.
+
     const { data: guidelineRows, error: guidelineError } = await supabase
       .from("guidelines")
       .select(`
@@ -1134,34 +1167,40 @@ if (message === "consent_no") {
       (conversationRuleRows ?? []) as ConversationRuleRow[]
     );
 
-    const conversationMode = inferConversationMode(finalDetectedRisk, message, conversationHistory);
+    const timeWarningMessage =
+      !bypassTimeLimit && !hasRecentTimeWarning(conversationHistory)
+        ? getTimeWarningMessage(remainingMs)
+        : null;
+
     const ruleBasedReply = buildRuleBasedLinkageReply(finalDetectedRisk);
 
-if (ruleBasedReply.handled && ruleBasedReply.reply) {
-  return new Response(
-    JSON.stringify({
-      reply: ruleBasedReply.reply,
-      currentDetectedRisk,
-      assessmentDetectedRisk,
-      finalDetectedRisk,
-      latestScores,
-      matchedGuidelines,
-      alertTriggered: false,
-      conversationEnded: false,
-      turnCount,
-      riskDetailState,
-      linkageIntent: ruleBasedReply.linkageIntent,
-      quickReplies: ruleBasedReply.quickReplies ?? [],
-      ruleBasedHandled: true,
-      sessionStartTime,
-      elapsedMs,
-      remainingMs: Math.max(0, remainingMs),
-      timeWarningMessage,
-      timeLimitReached: false,
-    }),
-    { status: 200, headers: corsHeaders }
-  );
-}
+    if (ruleBasedReply.handled && ruleBasedReply.reply) {
+      return new Response(
+        JSON.stringify({
+          reply: ruleBasedReply.reply,
+          currentDetectedRisk,
+          assessmentDetectedRisk,
+          finalDetectedRisk,
+          latestScores,
+          matchedGuidelines,
+          alertTriggered: shouldSendEmail,
+          conversationEnded: false,
+          turnCount,
+          riskDetailState,
+          linkageIntent: ruleBasedReply.linkageIntent,
+          quickReplies: ruleBasedReply.quickReplies ?? [],
+          ruleBasedHandled: true,
+          sessionStartTime,
+          elapsedMs,
+          remainingMs: Math.max(0, remainingMs),
+          timeWarningMessage,
+          timeLimitReached: false,
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
+    const conversationMode = inferConversationMode(finalDetectedRisk, message, conversationHistory);
     const softFollowUpHint = getSoftFollowUpHint(
       conversationMode,
       message,
@@ -1169,11 +1208,6 @@ if (ruleBasedReply.handled && ruleBasedReply.reply) {
       riskDetailState,
       conversationHistory
     );
-
-    const timeWarningMessage =
-      !bypassTimeLimit && !hasRecentTimeWarning(conversationHistory)
-        ? getTimeWarningMessage(remainingMs)
-        : null;
 
     const systemPrompt = `
 당신은 삼성서울병원 생명사랑위기대응센터의 AI 기반 상담 챗봇 CAREBot입니다.
@@ -1321,6 +1355,9 @@ ${conversationRuleText}
         turnCount,
         riskDetailState,
         conversationMode,
+        linkageIntent: "none",
+        quickReplies: [],
+        ruleBasedHandled: false,
         sessionStartTime,
         elapsedMs,
         remainingMs: Math.max(0, remainingMs),
