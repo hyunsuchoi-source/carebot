@@ -298,78 +298,6 @@ function buildRuleBasedLinkageReply(
   };
 }
 
-if (message === "center_use_yes") {
-  return new Response(
-    JSON.stringify({
-      reply:
-        "현재 이용 중인 기관 담당자와 연결하는 것이 좋겠어요. 담당 사회복지사에게도 내용을 전달할게요.",
-      quickReplies: [],
-      linkageIntent: "center_use_yes",
-    }),
-    {
-      status: 200,
-      headers: corsHeaders,
-    }
-  );
-}
-
-if (message === "center_use_no") {
-  return new Response(
-    JSON.stringify({
-      reply:
-        "도움을 받을 수 있는 지역사회 자원을 연결해드릴 수 있어요. 연계에 동의하시나요?",
-      linkageIntent:
-        "ask_local_resource_consent",
-      quickReplies: [
-        {
-          label: "동의",
-          value: "consent_yes",
-        },
-        {
-          label: "비동의",
-          value: "consent_no",
-        },
-      ],
-    }),
-    {
-      status: 200,
-      headers: corsHeaders,
-    }
-  );
-}
-
-if (message === "consent_yes") {
-  return new Response(
-    JSON.stringify({
-      reply:
-        "알겠습니다. 거주 지역을 확인한 후 담당 사회복지사에게 연계 요청을 전달하겠습니다.",
-      quickReplies: [],
-      linkageIntent:
-        "local_resource_consent_yes",
-    }),
-    {
-      status: 200,
-      headers: corsHeaders,
-    }
-  );
-}
-
-if (message === "consent_no") {
-  return new Response(
-    JSON.stringify({
-      reply:
-        "알겠습니다. 연계는 진행하지 않을게요. 필요할 때 언제든 말씀해주세요.",
-      quickReplies: [],
-      linkageIntent:
-        "local_resource_consent_no",
-    }),
-    {
-      status: 200,
-      headers: corsHeaders,
-    }
-  );
-}
-
 function escalateRiskForEnvironment(risk: RiskLevel, detailState: RiskDetailState): RiskLevel {
   const order: RiskLevel[] = ["low", "medium", "high", "imminent"];
   let idx = order.indexOf(risk);
@@ -964,6 +892,78 @@ Deno.serve(async (req) => {
       );
     }
 
+if (message === "center_use_yes") {
+  return new Response(
+    JSON.stringify({
+      reply:
+        "현재 이용 중인 기관이 있다면 그곳의 담당자에게 지금 상태를 알리는 것이 좋아요. 필요하면 담당 사회복지사에게도 내용을 전달할게요.",
+      quickReplies: [],
+      linkageIntent: "center_use_yes",
+      ruleBasedHandled: true,
+    }),
+    {
+      status: 200,
+      headers: corsHeaders,
+    }
+  );
+}
+
+if (message === "center_use_no" || message === "center_use_unknown") {
+  return new Response(
+    JSON.stringify({
+      reply:
+        "그렇다면 도움받을 수 있는 지역사회 자원을 연결해드릴 수 있어요. 연계에 동의하시나요?",
+      linkageIntent: "ask_local_resource_consent",
+      ruleBasedHandled: true,
+      quickReplies: [
+        {
+          label: "동의해요",
+          value: "consent_yes",
+        },
+        {
+          label: "동의하지 않아요",
+          value: "consent_no",
+        },
+      ],
+    }),
+    {
+      status: 200,
+      headers: corsHeaders,
+    }
+  );
+}
+
+if (message === "consent_yes") {
+  return new Response(
+    JSON.stringify({
+      reply:
+        "알겠습니다. 거주 지역을 확인한 후 담당 사회복지사에게 연계 준비를 알릴게요.",
+      quickReplies: [],
+      linkageIntent: "local_resource_consent_yes",
+      ruleBasedHandled: true,
+    }),
+    {
+      status: 200,
+      headers: corsHeaders,
+    }
+  );
+}
+
+if (message === "consent_no") {
+  return new Response(
+    JSON.stringify({
+      reply:
+        "알겠습니다. 연계는 진행하지 않을게요. 다만 필요할 때는 언제든 도움을 요청할 수 있어요.",
+      quickReplies: [],
+      linkageIntent: "local_resource_consent_no",
+      ruleBasedHandled: true,
+    }),
+    {
+      status: 200,
+      headers: corsHeaders,
+    }
+  );
+}
     const turnCount = getTurnCount(conversationHistory);
 
     if (turnCount > MAX_TURNS) {
@@ -1135,6 +1135,33 @@ Deno.serve(async (req) => {
     );
 
     const conversationMode = inferConversationMode(finalDetectedRisk, message, conversationHistory);
+    const ruleBasedReply = buildRuleBasedLinkageReply(finalDetectedRisk);
+
+if (ruleBasedReply.handled && ruleBasedReply.reply) {
+  return new Response(
+    JSON.stringify({
+      reply: ruleBasedReply.reply,
+      currentDetectedRisk,
+      assessmentDetectedRisk,
+      finalDetectedRisk,
+      latestScores,
+      matchedGuidelines,
+      alertTriggered: false,
+      conversationEnded: false,
+      turnCount,
+      riskDetailState,
+      linkageIntent: ruleBasedReply.linkageIntent,
+      quickReplies: ruleBasedReply.quickReplies ?? [],
+      ruleBasedHandled: true,
+      sessionStartTime,
+      elapsedMs,
+      remainingMs: Math.max(0, remainingMs),
+      timeWarningMessage,
+      timeLimitReached: false,
+    }),
+    { status: 200, headers: corsHeaders }
+  );
+}
     const softFollowUpHint = getSoftFollowUpHint(
       conversationMode,
       message,
