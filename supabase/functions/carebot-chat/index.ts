@@ -33,16 +33,6 @@ const FORCE_EMAIL_ON_FINAL_TURN_FOR_TEST = false;
 type RiskLevel = "low" | "medium" | "high" | "imminent";
 type ConversationMode = "engagement" | "exploration" | "support" | "safety";
 
-type ConversationStage =
-  | "engagement"
-  | "risk_check"
-  | "sleep_meal_check"
-  | "alone_check"
-  | "center_use_check"
-  | "resource_linkage"
-  | "social_worker_handoff";
-
-
 type GuidelineRow = {
   id?: number;
   risk_level: string;
@@ -103,22 +93,19 @@ type RiskDetailState = {
   hasPlan: boolean;
 };
 
+type QuickReply = {
+  label: string;
+  value: string;
+};
+
 type LinkageIntent =
   | "ask_center_use"
   | "center_use_yes"
   | "center_use_no"
-  | "center_use_unknown"
   | "ask_local_resource_consent"
   | "local_resource_consent_yes"
   | "local_resource_consent_no"
-  | "ask_region"
   | "none";
-
-type QuickReply = {
-  label: string;
-  value: string;
-  nextStage?: ConversationStage;
-};
 
 type RuleBasedReply = {
   handled: boolean;
@@ -126,9 +113,6 @@ type RuleBasedReply = {
   linkageIntent?: LinkageIntent;
   alertSocialWorker?: boolean;
   quickReplies?: QuickReply[];
-  currentStage?: ConversationStage;
-  nextStage?: ConversationStage;
-  conversationEnded?: boolean;
 };
 
 function normalizeText(text: string) {
@@ -287,409 +271,103 @@ function detectRiskDetailState(text: string): RiskDetailState {
   };
 }
 
-
-function detectYesNoOrButtonValue(message: string): "yes" | "no" | "unknown" {
-  const text = normalizeText(message);
-
-  const yesValues = [
-    "center_use_yes",
-    "consent_yes",
-    "local_resource_consent_yes",
-    "yes",
-  ];
-
-  const noValues = [
-    "center_use_no",
-    "consent_no",
-    "local_resource_consent_no",
-    "no",
-  ];
-
-  const unknownValues = [
-    "center_use_unknown",
-    "unknown",
-    "잘 모르겠어요",
-    "모르겠어요",
-  ];
-
-  if (yesValues.includes(text)) return "yes";
-  if (noValues.includes(text)) return "no";
-  if (unknownValues.includes(text)) return "unknown";
-
-  const yesPatterns = [
-    "응",
-    "네",
-    "예",
-    "맞아",
-    "맞아요",
-    "동의",
-    "좋아",
-    "좋아요",
-    "이용해",
-    "이용 중",
-    "이용중",
-    "다니고",
-    "다니는 중",
-    "받고 있어",
-    "연결돼",
-  ];
-
-  const noPatterns = [
-    "아니",
-    "아니요",
-    "싫어",
-    "비동의",
-    "동의하지 않",
-    "안 해",
-    "안돼",
-    "안 돼",
-    "이용 안",
-    "안 이용",
-    "없어",
-  ];
-
-  if (yesPatterns.some((p) => text.includes(p))) return "yes";
-  if (noPatterns.some((p) => text.includes(p))) return "no";
-
-  return "unknown";
-}
-
-function inferLastBotIntent(conversationHistory: ConversationMessage[]): LinkageIntent {
-  const lastAssistant = [...conversationHistory]
-    .reverse()
-    .find((m) => m.role === "assistant")?.content ?? "";
-
-  const text = normalizeText(lastAssistant);
-
-  if (
-    text.includes("정신건강복지센터") &&
-    (text.includes("이용 중") || text.includes("상담기관"))
-  ) {
-    return "ask_center_use";
-  }
-
-  if (
-    text.includes("지원기관") &&
-    (text.includes("안내") || text.includes("연계")) &&
-    (text.includes("괜찮") || text.includes("동의"))
-  ) {
-    return "ask_local_resource_consent";
-  }
-
-  if (text.includes("거주 지역") && text.includes("알려")) {
-    return "ask_region";
-  }
-
-  return "none";
-}
-
-function shouldStartResourceLinkage(
+function buildRuleBasedLinkageReply(
   finalRisk: RiskLevel,
-  message: string,
-  conversationHistory: ConversationMessage[]
-): boolean {
-  const text = normalizeText(
-    `${conversationHistory.map((m) => m.content).join(" ")} ${message}`
-  );
+): RuleBasedReply {
 
-  const needHelpKeywords = [
-    "도움 받고 싶",
-    "상담 받고 싶",
-    "어디서 도움",
-    "연결",
-    "센터",
-    "지원",
-    "도와줄 곳",
-    "혼자 힘들",
-    "도움 필요",
-    "상담기관",
-    "정신건강복지센터",
-  ];
-
-  if (finalRisk === "high" || finalRisk === "imminent") return true;
-  if (finalRisk === "medium" && needHelpKeywords.some((k) => text.includes(k))) return true;
-
-  return false;
-}
-
-function normalizeStage(stage?: string | null): ConversationStage {
-  const allowed: ConversationStage[] = [
-    "engagement",
-    "risk_check",
-    "sleep_meal_check",
-    "alone_check",
-    "center_use_check",
-    "resource_linkage",
-    "social_worker_handoff",
-  ];
-
-  if (stage && allowed.includes(stage as ConversationStage)) {
-    return stage as ConversationStage;
-  }
-
-  return "engagement";
-}
-
-function getQuickReplyStage(message: string): ConversationStage | null {
-  const value = normalizeText(message);
-
-  const stageMap: Record<string, ConversationStage> = {
-    risk_thought_yes: "sleep_meal_check",
-    risk_thought_no: "engagement",
-    sleep_meal_ok: "alone_check",
-    sleep_meal_bad: "alone_check",
-    alone_yes: "center_use_check",
-    alone_no: "center_use_check",
-    center_use_yes: "social_worker_handoff",
-    center_use_no: "resource_linkage",
-    center_use_unknown: "resource_linkage",
-    consent_yes: "social_worker_handoff",
-    consent_no: "engagement",
-  };
-
-  return stageMap[value] ?? null;
-}
-
-function shouldStartStageFlow(params: {
-  finalRisk: RiskLevel;
-  message: string;
-  conversationHistory: ConversationMessage[];
-}): boolean {
-  const { finalRisk, message, conversationHistory } = params;
-  const text = normalizeText(`${conversationHistory.map((m) => m.content).join(" ")} ${message}`);
-
-  const directHelpKeywords = [
-    "도움 받고 싶",
-    "상담 받고 싶",
-    "어디서 도움",
-    "연결",
-    "센터",
-    "지원",
-    "도와줄 곳",
-    "혼자 힘들",
-    "도움 필요",
-    "상담기관",
-    "정신건강복지센터",
-  ];
-
-  if (finalRisk === "high" || finalRisk === "imminent") return true;
-  if (finalRisk === "medium" && directHelpKeywords.some((k) => text.includes(k))) return true;
-
-  return false;
-}
-
-function buildStageBasedRuleReply(params: {
-  message: string;
-  currentStage?: string | null;
-  finalRisk: RiskLevel;
-  conversationHistory: ConversationMessage[];
-  riskDetailState: RiskDetailState;
-}): RuleBasedReply {
-  const { message, currentStage, finalRisk, conversationHistory, riskDetailState } = params;
-  const text = normalizeText(message);
-  const stage = getQuickReplyStage(message) ?? normalizeStage(currentStage);
-
-  if (text === "risk_thought_yes") {
+  if (finalRisk !== "low") {
     return {
       handled: true,
-      currentStage: "risk_check",
-      nextStage: "sleep_meal_check",
-      reply: "말해주셔서 감사합니다. 지금 상태를 조금 더 안전하게 보기 위해 한 가지만 확인할게요. 최근 수면이나 식사는 어떠셨나요?",
-      alertSocialWorker: finalRisk === "high" || finalRisk === "imminent",
-      quickReplies: [
-        { label: "수면·식사가 비교적 괜찮아요", value: "sleep_meal_ok", nextStage: "alone_check" },
-        { label: "수면·식사가 많이 무너졌어요", value: "sleep_meal_bad", nextStage: "alone_check" },
-      ],
-    };
-  }
-
-  if (text === "risk_thought_no") {
-    return {
-      handled: true,
-      currentStage: "risk_check",
-      nextStage: "engagement",
-      reply: "알려주셔서 고마워요. 오늘 힘든 일이 있으셨나요?.",
-      alertSocialWorker: false,
-      quickReplies: [],
-    };
-  }
-
-  if (text === "sleep_meal_ok" || text === "sleep_meal_bad") {
-    const isBad = text === "sleep_meal_bad";
-    return {
-      handled: true,
-      currentStage: "sleep_meal_check",
-      nextStage: "alone_check",
-      reply: isBad
-        ? "수면이나 식사가 많이 무너진 상태라면 혼자 버티기 더 어려울 수 있어요. 지금 혼자 계신가요?"
-        : "확인해주셔서 감사합니다. 안전 확인을 위해 한 가지만 더 여쭤볼게요. 지금 혼자 계신가요?",
-      alertSocialWorker: isBad && (finalRisk === "high" || finalRisk === "imminent"),
-      quickReplies: [
-        { label: "혼자 있어요", value: "alone_yes", nextStage: "center_use_check" },
-        { label: "곁에 사람이 있어요", value: "alone_no", nextStage: "center_use_check" },
-      ],
-    };
-  }
-
-  if (text === "alone_yes" || text === "alone_no") {
-    const isAlone = text === "alone_yes";
-    return {
-      handled: true,
-      currentStage: "alone_check",
-      nextStage: "center_use_check",
-      reply: isAlone
-        ? "지금 혼자 계신다면 안전 연결을 조금 더 우선해서 볼게요. 현재 정신건강복지센터나 상담기관을 이용 중이신가요?"
-        : "곁에 사람이 있다니 다행이에요. 이어서 확인할게요. 현재 정신건강복지센터나 상담기관을 이용 중이신가요?",
-      alertSocialWorker: isAlone && (finalRisk === "high" || finalRisk === "imminent"),
-      quickReplies: [
-        { label: "이용 중이에요", value: "center_use_yes", nextStage: "social_worker_handoff" },
-        { label: "이용하지 않아요", value: "center_use_no", nextStage: "resource_linkage" },
-        { label: "잘 모르겠어요", value: "center_use_unknown", nextStage: "resource_linkage" },
-      ],
-    };
-  }
-
-  if (text === "center_use_yes") {
-    return {
-      handled: true,
-      currentStage: "center_use_check",
-      nextStage: "social_worker_handoff",
-      linkageIntent: "center_use_yes",
-      reply: "이미 이용 중인 기관이 있다면 그곳에 지금 상태를 알리는 것이 가장 좋아요. 위기대응 가이드에서 도움이 필요하실 때 연락할 수 있는 기관 연락처를 확인할 수 있어요.",
-      alertSocialWorker: true,
-      quickReplies: [],
-    };
-  }
-
-  if (text === "center_use_no" || text === "center_use_unknown") {
-    return {
-      handled: true,
-      currentStage: "center_use_check",
-      nextStage: "resource_linkage",
-      linkageIntent: text === "center_use_no" ? "center_use_no" : "center_use_unknown",
-      reply: "그렇다면 거주 지역을 기준으로 정신건강복지센터나 지원기관 정보를 안내해드릴 수 있어요. 지역사회 자원 연계에 동의하시나요?",
-      alertSocialWorker: false,
-      quickReplies: [
-        { label: "동의해요", value: "consent_yes", nextStage: "social_worker_handoff" },
-        { label: "동의하지 않아요", value: "consent_no", nextStage: "engagement" },
-      ],
-    };
-  }
-
-  if (text === "consent_yes") {
-    return {
-      handled: true,
-      currentStage: "resource_linkage",
-      nextStage: "social_worker_handoff",
-      linkageIntent: "local_resource_consent_yes",
-      reply: "알겠습니다. 거주 지역을 기준으로 연계 가능한 기관을 확인하고, 담당 사회복지사에게 연계 준비를 알릴게요. 현재 거주 지역을 알려주세요.",
-      alertSocialWorker: true,
-      quickReplies: [],
-    };
-  }
-
-  if (text === "consent_no") {
-    return {
-      handled: true,
-      currentStage: "resource_linkage",
-      nextStage: "engagement",
-      linkageIntent: "local_resource_consent_no",
-      reply: "괜찮아요. 원치 않으시면 지역사회 연계는 진행하지 않을게요. 다만 지금 안전이 걱정되거나 혼자 버티기 어렵다면 109, 119, 가까운 응급실에 도움을 요청해 주세요.",
-      alertSocialWorker: false,
-      quickReplies: [],
-    };
-  }
-
-  if (stage === "risk_check") {
-    return {
-      handled: true,
-      currentStage: "risk_check",
-      nextStage: "sleep_meal_check",
-      reply: "안전을 위해 직접 확인할게요. 지금 죽고 싶거나 스스로를 해치고 싶은 생각이 있으신가요?",
-      alertSocialWorker: false,
-      quickReplies: [
-        { label: "그런 생각이 있어요", value: "risk_thought_yes", nextStage: "sleep_meal_check" },
-        { label: "그런 생각은 없어요", value: "risk_thought_no", nextStage: "engagement" },
-      ],
-    };
-  }
-
-  if (stage === "sleep_meal_check") {
-    return {
-      handled: true,
-      currentStage: "sleep_meal_check",
-      nextStage: "alone_check",
-      reply: "최근 수면이나 식사는 어떠셨나요?",
-      alertSocialWorker: false,
-      quickReplies: [
-        { label: "수면·식사가 비교적 괜찮아요", value: "sleep_meal_ok", nextStage: "alone_check" },
-        { label: "수면·식사가 많이 무너졌어요", value: "sleep_meal_bad", nextStage: "alone_check" },
-      ],
-    };
-  }
-
-  if (stage === "alone_check") {
-    return {
-      handled: true,
-      currentStage: "alone_check",
-      nextStage: "center_use_check",
-      reply: "지금 혼자 계신가요?",
-      alertSocialWorker: false,
-      quickReplies: [
-        { label: "혼자 있어요", value: "alone_yes", nextStage: "center_use_check" },
-        { label: "곁에 사람이 있어요", value: "alone_no", nextStage: "center_use_check" },
-      ],
-    };
-  }
-
-  if (stage === "center_use_check") {
-    return {
-      handled: true,
-      currentStage: "center_use_check",
-      nextStage: "resource_linkage",
       linkageIntent: "ask_center_use",
       reply: "현재 정신건강복지센터나 상담기관을 이용 중이신가요?",
-      alertSocialWorker: false,
       quickReplies: [
-        { label: "이용 중이에요", value: "center_use_yes", nextStage: "social_worker_handoff" },
-        { label: "이용하지 않아요", value: "center_use_no", nextStage: "resource_linkage" },
-        { label: "잘 모르겠어요", value: "center_use_unknown", nextStage: "resource_linkage" },
+        {
+          label: "이용 중이에요",
+          value: "center_use_yes",
+        },
+        {
+          label: "이용하지 않아요",
+          value: "center_use_no",
+        },
       ],
     };
   }
 
-  if (stage === "resource_linkage") {
-    return {
-      handled: true,
-      currentStage: "resource_linkage",
-      nextStage: "social_worker_handoff",
-      linkageIntent: "ask_local_resource_consent",
-      reply: "거주 지역을 기준으로 지원기관 정보를 안내해드려도 괜찮을까요?",
-      alertSocialWorker: false,
-      quickReplies: [
-        { label: "동의해요", value: "consent_yes", nextStage: "social_worker_handoff" },
-        { label: "동의하지 않아요", value: "consent_no", nextStage: "engagement" },
-      ],
-    };
-  }
+  return {
+    handled: false,
+  };
+}
 
-  if (shouldStartStageFlow({ finalRisk, message, conversationHistory })) {
-    return {
-      handled: true,
-      currentStage: "engagement",
-      nextStage: "risk_check",
-      reply: riskDetailState.hasCurrentIntent || finalRisk === "high" || finalRisk === "imminent"
-        ? "지금 안전을 먼저 확인하는 게 중요해 보여요. 죽고 싶거나 스스로를 해치고 싶은 생각이 지금 있으신가요?"
-        : "도움 연결을 위해 안전 상태를 한 가지만 확인할게요. 죽고 싶거나 스스로를 해치고 싶은 생각이 있으신가요?",
-      alertSocialWorker: finalRisk === "imminent",
-      quickReplies: [
-        { label: "그런 생각이 있어요", value: "risk_thought_yes", nextStage: "sleep_meal_check" },
-        { label: "그런 생각은 없어요", value: "risk_thought_no", nextStage: "engagement" },
-      ],
-    };
-  }
+if (message === "center_use_yes") {
+  return new Response(
+    JSON.stringify({
+      reply:
+        "현재 이용 중인 기관 담당자와 연결하는 것이 좋겠어요. 담당 사회복지사에게도 내용을 전달할게요.",
+      quickReplies: [],
+      linkageIntent: "center_use_yes",
+    }),
+    {
+      status: 200,
+      headers: corsHeaders,
+    }
+  );
+}
 
-  return { handled: false, currentStage: stage };
+if (message === "center_use_no") {
+  return new Response(
+    JSON.stringify({
+      reply:
+        "도움을 받을 수 있는 지역사회 자원을 연결해드릴 수 있어요. 연계에 동의하시나요?",
+      linkageIntent:
+        "ask_local_resource_consent",
+      quickReplies: [
+        {
+          label: "동의",
+          value: "consent_yes",
+        },
+        {
+          label: "비동의",
+          value: "consent_no",
+        },
+      ],
+    }),
+    {
+      status: 200,
+      headers: corsHeaders,
+    }
+  );
+}
+
+if (message === "consent_yes") {
+  return new Response(
+    JSON.stringify({
+      reply:
+        "알겠습니다. 거주 지역을 확인한 후 담당 사회복지사에게 연계 요청을 전달하겠습니다.",
+      quickReplies: [],
+      linkageIntent:
+        "local_resource_consent_yes",
+    }),
+    {
+      status: 200,
+      headers: corsHeaders,
+    }
+  );
+}
+
+if (message === "consent_no") {
+  return new Response(
+    JSON.stringify({
+      reply:
+        "알겠습니다. 연계는 진행하지 않을게요. 필요할 때 언제든 말씀해주세요.",
+      quickReplies: [],
+      linkageIntent:
+        "local_resource_consent_no",
+    }),
+    {
+      status: 200,
+      headers: corsHeaders,
+    }
+  );
 }
 
 function escalateRiskForEnvironment(risk: RiskLevel, detailState: RiskDetailState): RiskLevel {
@@ -1228,6 +906,9 @@ async function sendAdminAlertViaResend(params: {
       <h3>최근 대화</h3>
       <ul>${conversationPreview}</ul>
       <hr />
+      <h3>매칭된 가이드라인</h3>
+      ${guidelineHtml}
+      <hr />
       <p><strong>발송 시각:</strong> ${new Date().toISOString()}</p>
     `,
   });
@@ -1249,14 +930,12 @@ Deno.serve(async (req) => {
       isFinalTurn = false,
       user_id,
       session_start_time,
-      current_stage,
     }: {
       message?: string;
       conversationHistory?: ConversationMessage[];
       isFinalTurn?: boolean;
       user_id?: string;
       session_start_time?: string;
-      current_stage?: ConversationStage;
     } = await req.json();
 
     if (!user_id || typeof user_id !== "string") {
@@ -1279,9 +958,6 @@ Deno.serve(async (req) => {
           alertTriggered: false,
           conversationEnded: false,
           turnCount: 0,
-          currentStage: "engagement",
-          nextStage: "engagement",
-          quickReplies: [],
           sessionStartTime: session_start_time ?? new Date().toISOString(),
         }),
         { status: 200, headers: corsHeaders }
@@ -1375,51 +1051,6 @@ Deno.serve(async (req) => {
       ? isFinalTurn
       : isFinalTurn && (finalDetectedRisk === "high" || finalDetectedRisk === "imminent");
 
-    if (finalDetectedRisk === "imminent") {
-      if (shouldSendEmail) {
-        try {
-          const userName = await getUserNameById(user_id);
-          await sendAdminAlertViaResend({
-            adminEmail: ADMIN_ALERT_EMAIL,
-            message,
-            finalRisk: finalDetectedRisk,
-            currentRisk: currentDetectedRisk,
-            assessmentRisk: assessmentDetectedRisk,
-            scores: latestScores,
-            matchedGuidelines: [],
-            conversationHistory,
-            userId: user_id,
-            userName,
-          });
-        } catch (emailError) {
-          console.error("❌ admin alert failed:", emailError);
-        }
-      }
-
-      return new Response(
-        JSON.stringify({
-          reply: buildImmediateSafetyReply(),
-          currentDetectedRisk,
-          assessmentDetectedRisk,
-          finalDetectedRisk,
-          latestScores,
-          matchedGuidelines: [],
-          alertTriggered: shouldSendEmail,
-          conversationEnded: false,
-          turnCount,
-          riskDetailState,
-          immediateSafetyMode: true,
-          currentStage: "social_worker_handoff",
-          nextStage: "social_worker_handoff",
-          quickReplies: [],
-          sessionStartTime,
-          elapsedMs,
-          remainingMs,
-        }),
-        { status: 200, headers: corsHeaders }
-      );
-    }
-
     const { data: guidelineRows, error: guidelineError } = await supabase
       .from("guidelines")
       .select(`
@@ -1503,67 +1134,6 @@ Deno.serve(async (req) => {
       (conversationRuleRows ?? []) as ConversationRuleRow[]
     );
 
-    const timeWarningMessage =
-      !bypassTimeLimit && !hasRecentTimeWarning(conversationHistory)
-        ? getTimeWarningMessage(remainingMs)
-        : null;
-
-    const ruleBasedReply = buildStageBasedRuleReply({
-      message,
-      currentStage: current_stage,
-      finalRisk: finalDetectedRisk,
-      conversationHistory,
-      riskDetailState,
-    });
-
-    if (ruleBasedReply.handled && ruleBasedReply.reply) {
-      if (ruleBasedReply.alertSocialWorker || shouldSendEmail) {
-        try {
-          const userName = await getUserNameById(user_id);
-          await sendAdminAlertViaResend({
-            adminEmail: ADMIN_ALERT_EMAIL,
-            message,
-            finalRisk: finalDetectedRisk,
-            currentRisk: currentDetectedRisk,
-            assessmentRisk: assessmentDetectedRisk,
-            scores: latestScores,
-            matchedGuidelines,
-            conversationHistory,
-            userId: user_id,
-            userName,
-          });
-        } catch (emailError) {
-          console.error("❌ admin alert failed:", emailError);
-        }
-      }
-
-      return new Response(
-        JSON.stringify({
-          reply: ruleBasedReply.reply,
-          currentDetectedRisk,
-          assessmentDetectedRisk,
-          finalDetectedRisk,
-          latestScores,
-          matchedGuidelines,
-          alertTriggered: Boolean(ruleBasedReply.alertSocialWorker || shouldSendEmail),
-          conversationEnded: false,
-          turnCount,
-          riskDetailState,
-          linkageIntent: ruleBasedReply.linkageIntent,
-          ruleBasedHandled: true,
-          currentStage: ruleBasedReply.currentStage ?? normalizeStage(current_stage),
-          nextStage: ruleBasedReply.nextStage ?? ruleBasedReply.currentStage ?? normalizeStage(current_stage),
-          quickReplies: ruleBasedReply.quickReplies ?? [],
-          sessionStartTime,
-          elapsedMs,
-          remainingMs: Math.max(0, remainingMs),
-          timeWarningMessage,
-          timeLimitReached: false,
-        }),
-        { status: 200, headers: corsHeaders }
-      );
-    }
-
     const conversationMode = inferConversationMode(finalDetectedRisk, message, conversationHistory);
     const softFollowUpHint = getSoftFollowUpHint(
       conversationMode,
@@ -1572,6 +1142,11 @@ Deno.serve(async (req) => {
       riskDetailState,
       conversationHistory
     );
+
+    const timeWarningMessage =
+      !bypassTimeLimit && !hasRecentTimeWarning(conversationHistory)
+        ? getTimeWarningMessage(remainingMs)
+        : null;
 
     const systemPrompt = `
 당신은 삼성서울병원 생명사랑위기대응센터의 AI 기반 상담 챗봇 CAREBot입니다.
@@ -1719,9 +1294,6 @@ ${conversationRuleText}
         turnCount,
         riskDetailState,
         conversationMode,
-        currentStage: normalizeStage(current_stage),
-        nextStage: normalizeStage(current_stage),
-        quickReplies: [],
         sessionStartTime,
         elapsedMs,
         remainingMs: Math.max(0, remainingMs),
