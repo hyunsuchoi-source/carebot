@@ -98,13 +98,23 @@ type QuickReply = {
   value: string;
 };
 
+type RecommendedAction = {
+  label: string;
+  action: string;
+  route: string;
+};
+
 type LinkageIntent =
   | "ask_center_use"
   | "center_use_yes"
   | "center_use_no"
+  | "ask_center_name"
+  | "ask_existing_center_consent"
   | "ask_local_resource_consent"
   | "local_resource_consent_yes"
   | "local_resource_consent_no"
+  | "ask_region"
+  | "region_received"
   | "none";
 
 type RuleBasedReply = {
@@ -113,6 +123,7 @@ type RuleBasedReply = {
   linkageIntent?: LinkageIntent;
   alertSocialWorker?: boolean;
   quickReplies?: QuickReply[];
+  recommendedActions?: RecommendedAction[];
 };
 
 function normalizeText(text: string) {
@@ -299,6 +310,52 @@ function buildRuleBasedLinkageReply(
   return {
     handled: false,
   };
+}
+
+
+function getLastAssistantMessage(conversationHistory: ConversationMessage[]): string {
+  return (
+    [...conversationHistory]
+      .reverse()
+      .find((m) => m.role === "assistant" && typeof m.content === "string")?.content ?? ""
+  );
+}
+
+function inferPendingLinkageStep(conversationHistory: ConversationMessage[]): LinkageIntent {
+  const lastAssistant = normalizeText(getLastAssistantMessage(conversationHistory));
+
+  if (
+    lastAssistant.includes("이용 중인 기관") &&
+    (lastAssistant.includes("기관명") || lastAssistant.includes("알려주"))
+  ) {
+    return "ask_center_name";
+  }
+
+  if (
+    lastAssistant.includes("기관 담당자") &&
+    (lastAssistant.includes("동의") || lastAssistant.includes("전달"))
+  ) {
+    return "ask_existing_center_consent";
+  }
+
+  if (
+    lastAssistant.includes("거주 지역") &&
+    (lastAssistant.includes("알려주") || lastAssistant.includes("어디"))
+  ) {
+    return "ask_region";
+  }
+
+  return "none";
+}
+
+function isSystemButtonValue(message: string): boolean {
+  return [
+    "center_use_yes",
+    "center_use_no",
+    "center_use_unknown",
+    "consent_yes",
+    "consent_no",
+  ].includes(message);
 }
 
 function escalateRiskForEnvironment(risk: RiskLevel, detailState: RiskDetailState): RiskLevel {
@@ -900,11 +957,83 @@ Deno.serve(async (req) => {
 
     const turnCount = getTurnCount(conversationHistory);
 
+    const pendingLinkageStep = inferPendingLinkageStep(conversationHistory);
+
+    if (
+      pendingLinkageStep === "ask_center_name" &&
+      !isSystemButtonValue(message)
+    ) {
+      const centerName = message.trim();
+
+      return new Response(
+        JSON.stringify({
+          reply:
+            `${centerName} 이용 중으로 확인했습니다. 이 정보는 담당 사회복지사가 이미 연결된 기관을 파악하는 데 활용됩니다. 위기 상황에서 바로 참고할 수 있도록 위기대응가이드도 함께 확인해 주세요. 해당 기관 담당자에게 현재 상태를 알릴 수 있도록 담당 사회복지사에게 전달해도 괜찮을까요?`,
+          currentDetectedRisk: "low",
+          assessmentDetectedRisk: "low",
+          finalDetectedRisk: "low",
+          latestScores: { phq9: null, gad7: null, sbqr: null },
+          matchedGuidelines: [],
+          alertTriggered: false,
+          conversationEnded: false,
+          turnCount,
+          linkageIntent: "ask_existing_center_consent",
+          ruleBasedHandled: true,
+          recommendedActions: [
+            {
+              label: "위기대응 가이드 보러가기",
+              action: "open_crisis_guide",
+              route: "/crisis-guide",
+            },
+          ],
+          quickReplies: [
+            {
+              label: "동의해요",
+              value: "consent_yes",
+            },
+            {
+              label: "동의하지 않아요",
+              value: "consent_no",
+            },
+          ],
+          sessionStartTime: session_start_time ?? new Date().toISOString(),
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
+    if (
+      pendingLinkageStep === "ask_region" &&
+      !isSystemButtonValue(message)
+    ) {
+      const regionName = message.trim();
+
+      return new Response(
+        JSON.stringify({
+          reply:
+            `${regionName} 기준으로 도움받을 수 있는 지역사회 자원을 확인해볼게요. 필요하면 담당 사회복지사에게 연계 준비를 알리겠습니다.`,
+          currentDetectedRisk: "low",
+          assessmentDetectedRisk: "low",
+          finalDetectedRisk: "low",
+          latestScores: { phq9: null, gad7: null, sbqr: null },
+          matchedGuidelines: [],
+          alertTriggered: true,
+          conversationEnded: false,
+          turnCount,
+          quickReplies: [],
+          linkageIntent: "region_received",
+          ruleBasedHandled: true,
+          sessionStartTime: session_start_time ?? new Date().toISOString(),
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
     if (message === "center_use_yes") {
       return new Response(
         JSON.stringify({
           reply:
-            "현재 이용 중인 기관이 있다면 그곳의 담당자에게 지금 상태를 알리는 것이 좋아요. 필요하면 담당 사회복지사에게도 내용을 전달할게요.",
+            "현재 이용 중인 기관명을 알려주실 수 있을까요? 담당 사회복지사가 이미 연결된 기관을 파악하는 데 도움이 됩니다. 위기 상황에서 바로 참고할 수 있도록 위기대응가이드도 함께 확인해 주세요.",
           currentDetectedRisk: "low",
           assessmentDetectedRisk: "low",
           finalDetectedRisk: "low",
@@ -914,7 +1043,14 @@ Deno.serve(async (req) => {
           conversationEnded: false,
           turnCount,
           quickReplies: [],
-          linkageIntent: "center_use_yes",
+          recommendedActions: [
+            {
+              label: "위기대응 가이드 보러가기",
+              action: "open_crisis_guide",
+              route: "/crisis-guide",
+            },
+          ],
+          linkageIntent: "ask_center_name",
           ruleBasedHandled: true,
           sessionStartTime: session_start_time ?? new Date().toISOString(),
         }),
@@ -954,10 +1090,32 @@ Deno.serve(async (req) => {
     }
 
     if (message === "consent_yes") {
+      if (pendingLinkageStep === "ask_existing_center_consent") {
+        return new Response(
+          JSON.stringify({
+            reply:
+              "알겠습니다. 담당 사회복지사에게 현재 상태와 이용 중인 기관 정보를 전달할게요. 지금은 혼자 감당하지 않도록 주변 사람이나 기관 담당자에게도 짧게 알려주세요.",
+            currentDetectedRisk: "low",
+            assessmentDetectedRisk: "low",
+            finalDetectedRisk: "low",
+            latestScores: { phq9: null, gad7: null, sbqr: null },
+            matchedGuidelines: [],
+            alertTriggered: true,
+            conversationEnded: false,
+            turnCount,
+            quickReplies: [],
+            linkageIntent: "local_resource_consent_yes",
+            ruleBasedHandled: true,
+            sessionStartTime: session_start_time ?? new Date().toISOString(),
+          }),
+          { status: 200, headers: corsHeaders }
+        );
+      }
+
       return new Response(
         JSON.stringify({
           reply:
-            "알겠습니다. 거주 지역을 확인한 후 담당 사회복지사에게 연계 준비를 알릴게요.",
+            "알겠습니다. 거주 지역을 기준으로 도움받을 수 있는 기관을 확인해볼게요. 현재 거주 지역을 알려주실 수 있을까요? 예: 서울 강남구, 수원시 영통구",
           currentDetectedRisk: "low",
           assessmentDetectedRisk: "low",
           finalDetectedRisk: "low",
@@ -967,7 +1125,7 @@ Deno.serve(async (req) => {
           conversationEnded: false,
           turnCount,
           quickReplies: [],
-          linkageIntent: "local_resource_consent_yes",
+          linkageIntent: "ask_region",
           ruleBasedHandled: true,
           sessionStartTime: session_start_time ?? new Date().toISOString(),
         }),
@@ -979,7 +1137,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           reply:
-            "알겠습니다. 연계는 진행하지 않을게요. 다만 필요할 때는 언제든 도움을 요청할 수 있어요.",
+            "알겠습니다. 원치 않으시면 연계는 진행하지 않을게요. 다만 급하게 도움이 필요해질 때는 위기대응가이드를 확인하거나 109, 119, 가까운 응급실에 도움을 요청해 주세요.",
           currentDetectedRisk: "low",
           assessmentDetectedRisk: "low",
           finalDetectedRisk: "low",
@@ -989,6 +1147,13 @@ Deno.serve(async (req) => {
           conversationEnded: false,
           turnCount,
           quickReplies: [],
+          recommendedActions: [
+            {
+              label: "위기대응 가이드 보러가기",
+              action: "open_crisis_guide",
+              route: "/crisis-guide",
+            },
+          ],
           linkageIntent: "local_resource_consent_no",
           ruleBasedHandled: true,
           sessionStartTime: session_start_time ?? new Date().toISOString(),
@@ -1189,6 +1354,7 @@ Deno.serve(async (req) => {
           riskDetailState,
           linkageIntent: ruleBasedReply.linkageIntent,
           quickReplies: ruleBasedReply.quickReplies ?? [],
+          recommendedActions: ruleBasedReply.recommendedActions ?? [],
           ruleBasedHandled: true,
           sessionStartTime,
           elapsedMs,
