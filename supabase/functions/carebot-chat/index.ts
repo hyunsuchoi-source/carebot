@@ -1017,7 +1017,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           reply:
-            `${submittedRegionName} 기준으로 도움받을 수 있는 지역사회 자원을 확인해볼게요. 필요하면 담당 사회복지사에게 연계 준비를 알리겠습니다.`,
+            `${submittedRegionName} 기준으로 도움받을 수 있는 지역사회 자원을 확인해볼게요. 담당 사회복지사가 관련 정보를 안내해 드릴 예정입니다. 지금은 상담을 계속 이어가도 괜찮아요. 지금 가장 힘들게 느껴지는 부분은 무엇인가요?.`,
           currentDetectedRisk: "low",
           assessmentDetectedRisk: "low",
           finalDetectedRisk: "low",
