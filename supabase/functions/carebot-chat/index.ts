@@ -353,8 +353,10 @@ function isSystemButtonValue(message: string): boolean {
     "center_use_yes",
     "center_use_no",
     "center_use_unknown",
-    "consent_yes",
-    "consent_no",
+    "center_share_consent_yes",
+    "center_share_consent_no",
+    "local_resource_consent_yes",
+    "local_resource_consent_no",
   ].includes(message);
 }
 
@@ -914,12 +916,16 @@ Deno.serve(async (req) => {
   try {
     const {
       message,
+      centerName,
+      regionName,
       conversationHistory = [],
       isFinalTurn = false,
       user_id,
       session_start_time,
     }: {
       message?: string;
+      centerName?: string;
+      regionName?: string;
       conversationHistory?: ConversationMessage[];
       isFinalTurn?: boolean;
       user_id?: string;
@@ -963,12 +969,12 @@ Deno.serve(async (req) => {
       pendingLinkageStep === "ask_center_name" &&
       !isSystemButtonValue(message)
     ) {
-      const centerName = message.trim();
+      const submittedCenterName = centerName?.trim() || message.trim();
 
       return new Response(
         JSON.stringify({
           reply:
-            `${centerName} 이용 중으로 확인했습니다. 이 정보는 담당 사회복지사가 이미 연결된 기관을 파악하는 데 활용됩니다. 위기 상황에서 바로 참고할 수 있도록 위기대응가이드도 함께 확인해 주세요. 해당 기관 담당자에게 현재 상태를 알릴 수 있도록 담당 사회복지사에게 전달해도 괜찮을까요?`,
+            `${submittedCenterName} 이용 중으로 확인했습니다. 이 정보는 담당 사회복지사가 이미 연결된 기관을 파악하는 데 활용됩니다. 위기 상황에서 바로 참고할 수 있도록 위기대응가이드도 함께 확인해 주세요. 해당 기관 담당자에게 현재 상태를 알릴 수 있도록 담당 사회복지사에게 전달해도 괜찮을까요?`,
           currentDetectedRisk: "low",
           assessmentDetectedRisk: "low",
           finalDetectedRisk: "low",
@@ -989,11 +995,11 @@ Deno.serve(async (req) => {
           quickReplies: [
             {
               label: "동의해요",
-              value: "consent_yes",
+              value: "center_share_consent_yes",
             },
             {
               label: "동의하지 않아요",
-              value: "consent_no",
+              value: "center_share_consent_no",
             },
           ],
           sessionStartTime: session_start_time ?? new Date().toISOString(),
@@ -1006,12 +1012,12 @@ Deno.serve(async (req) => {
       pendingLinkageStep === "ask_region" &&
       !isSystemButtonValue(message)
     ) {
-      const regionName = message.trim();
+      const submittedRegionName = regionName?.trim() || message.trim();
 
       return new Response(
         JSON.stringify({
           reply:
-            `${regionName} 기준으로 도움받을 수 있는 지역사회 자원을 확인해볼게요. 필요하면 담당 사회복지사에게 연계 준비를 알리겠습니다.`,
+            `${submittedRegionName} 기준으로 도움받을 수 있는 지역사회 자원을 확인해볼게요. 필요하면 담당 사회복지사에게 연계 준비를 알리겠습니다.`,
           currentDetectedRisk: "low",
           assessmentDetectedRisk: "low",
           finalDetectedRisk: "low",
@@ -1052,6 +1058,9 @@ Deno.serve(async (req) => {
           ],
           linkageIntent: "ask_center_name",
           ruleBasedHandled: true,
+          inputMode: "center_name",
+          inputLabel: "이용 중인 기관명",
+          inputPlaceholder: "예: 미추홀구정신건강복지센터",
           sessionStartTime: session_start_time ?? new Date().toISOString(),
         }),
         { status: 200, headers: corsHeaders }
@@ -1076,11 +1085,11 @@ Deno.serve(async (req) => {
           quickReplies: [
             {
               label: "동의해요",
-              value: "consent_yes",
+              value: "local_resource_consent_yes",
             },
             {
               label: "동의하지 않아요",
-              value: "consent_no",
+              value: "local_resource_consent_no",
             },
           ],
           sessionStartTime: session_start_time ?? new Date().toISOString(),
@@ -1089,29 +1098,51 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (message === "consent_yes") {
-      if (pendingLinkageStep === "ask_existing_center_consent") {
-        return new Response(
-          JSON.stringify({
-            reply:
-              "알겠습니다. 담당 사회복지사에게 현재 상태와 이용 중인 기관 정보를 전달할게요. 지금은 혼자 감당하지 않도록 주변 사람이나 기관 담당자에게도 짧게 알려주세요.",
-            currentDetectedRisk: "low",
-            assessmentDetectedRisk: "low",
-            finalDetectedRisk: "low",
-            latestScores: { phq9: null, gad7: null, sbqr: null },
-            matchedGuidelines: [],
-            alertTriggered: true,
-            conversationEnded: false,
-            turnCount,
-            quickReplies: [],
-            linkageIntent: "local_resource_consent_yes",
-            ruleBasedHandled: true,
-            sessionStartTime: session_start_time ?? new Date().toISOString(),
-          }),
-          { status: 200, headers: corsHeaders }
-        );
-      }
+    if (message === "center_share_consent_yes") {
+      return new Response(
+        JSON.stringify({
+          reply:
+            "알겠습니다. 담당 사회복지사에게 현재 상태와 이용 중인 기관 정보를 전달할게요. 지금은 상담을 계속 이어가도 괜찮아요. 지금 가장 힘든 부분은 무엇인가요?",
+          currentDetectedRisk: "low",
+          assessmentDetectedRisk: "low",
+          finalDetectedRisk: "low",
+          latestScores: { phq9: null, gad7: null, sbqr: null },
+          matchedGuidelines: [],
+          alertTriggered: true,
+          conversationEnded: false,
+          turnCount,
+          quickReplies: [],
+          linkageIntent: "none",
+          ruleBasedHandled: true,
+          sessionStartTime: session_start_time ?? new Date().toISOString(),
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
 
+    if (message === "center_share_consent_no") {
+      return new Response(
+        JSON.stringify({
+          reply:
+            "알겠습니다. 기관 정보는 담당 사회복지사에게 전달하지 않을게요. 지금은 상담을 계속 이어가도 괜찮아요. 지금 가장 힘든 부분은 무엇인가요?",
+          currentDetectedRisk: "low",
+          assessmentDetectedRisk: "low",
+          finalDetectedRisk: "low",
+          latestScores: { phq9: null, gad7: null, sbqr: null },
+          matchedGuidelines: [],
+          alertTriggered: false,
+          conversationEnded: false,
+          turnCount,
+          quickReplies: [],
+          linkageIntent: "none",
+          ruleBasedHandled: true,
+          sessionStartTime: session_start_time ?? new Date().toISOString(),
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
+    if (message === "local_resource_consent_yes") {
       return new Response(
         JSON.stringify({
           reply:
@@ -1127,17 +1158,20 @@ Deno.serve(async (req) => {
           quickReplies: [],
           linkageIntent: "ask_region",
           ruleBasedHandled: true,
+          inputMode: "region",
+          inputLabel: "거주 지역",
+          inputPlaceholder: "예: 인천 미추홀구",
           sessionStartTime: session_start_time ?? new Date().toISOString(),
         }),
         { status: 200, headers: corsHeaders }
       );
     }
 
-    if (message === "consent_no") {
+    if (message === "local_resource_consent_no") {
       return new Response(
         JSON.stringify({
           reply:
-            "알겠습니다. 원치 않으시면 연계는 진행하지 않을게요. 다만 급하게 도움이 필요해질 때는 위기대응가이드를 확인하거나 109, 119, 가까운 응급실에 도움을 요청해 주세요.",
+            "알겠습니다. 연계는 진행하지 않을게요. 필요할 때는 언제든 도움을 요청하실 수 있어요. 급하게 도움이 필요해질 때는 위기대응가이드를 확인하거나 109, 119, 가까운 응급실에 도움을 요청해 주세요.",
           currentDetectedRisk: "low",
           assessmentDetectedRisk: "low",
           finalDetectedRisk: "low",
@@ -1154,7 +1188,7 @@ Deno.serve(async (req) => {
               route: "/crisis-guide",
             },
           ],
-          linkageIntent: "local_resource_consent_no",
+          linkageIntent: "none",
           ruleBasedHandled: true,
           sessionStartTime: session_start_time ?? new Date().toISOString(),
         }),
