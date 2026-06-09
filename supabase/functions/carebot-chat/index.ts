@@ -314,37 +314,30 @@ function detectRiskDetailState(text: string): RiskDetailState {
 function buildRuleBasedLinkageReply(
   finalRisk: RiskLevel,
   turnCount: number,
+  conversationHistory: ConversationMessage[],
 ): RuleBasedReply {
+  if (hasAskedCenterUse(conversationHistory)) {
+    return { handled: false };
+  }
+
   if (finalRisk === "low" || finalRisk === "medium") {
-    if (turnCount < 4) {
-      return { handled: false };
-    }
+    if (turnCount < 4) return { handled: false };
+
     return {
       handled: true,
       linkageIntent: "ask_center_use",
-      reply: "도움 연결을 위해 한 가지만 확인할게요. 현재 정신건강복지센터나 상담기관을 이용 중이신가요?",
+      reply:
+        "말씀해 주신 내용을 보면 혼자만 안고 있기보다 도움받을 수 있는 곳과도 연결해두면 좋을 것 같아요. 혹시 현재 정신건강복지센터나 상담기관을 이용 중이신가요?",
       quickReplies: [
-        {
-          label: "이용 중이에요",
-          value: "center_use_yes",
-        },
-        {
-          label: "이용하지 않아요",
-          value: "center_use_no",
-        },
-        {
-          label: "잘 모르겠어요",
-          value: "center_use_unknown",
-        },
+        { label: "이용 중이에요", value: "center_use_yes" },
+        { label: "이용하지 않아요", value: "center_use_no" },
+        { label: "잘 모르겠어요", value: "center_use_unknown" },
       ],
     };
   }
 
-  return {
-    handled: false,
-  };
+  return { handled: false };
 }
-
 
 function getLastAssistantMessage(conversationHistory: ConversationMessage[]): string {
   return (
@@ -391,6 +384,16 @@ function isSystemButtonValue(message: string): boolean {
     "local_resource_consent_yes",
     "local_resource_consent_no",
   ].includes(message);
+}
+
+function hasAskedCenterUse(conversationHistory: ConversationMessage[]): boolean {
+  return conversationHistory.some(
+    (m) =>
+      m.role === "assistant" &&
+      typeof m.content === "string" &&
+      m.content.includes("정신건강복지센터") &&
+      m.content.includes("이용 중")
+  );
 }
 
 function escalateRiskForEnvironment(risk: RiskLevel, detailState: RiskDetailState): RiskLevel {
@@ -1450,7 +1453,7 @@ Deno.serve(async (req) => {
         ? getTimeWarningMessage(remainingMs)
         : null;
 
-    const ruleBasedReply = buildRuleBasedLinkageReply(finalDetectedRisk, turnCount);
+    const ruleBasedReply = buildRuleBasedLinkageReply(finalDetectedRisk, turnCount, conversationHistory);
 
     if (ruleBasedReply.handled && ruleBasedReply.reply) {
       return new Response(
