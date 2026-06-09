@@ -578,23 +578,36 @@ function riskWeight(ruleRisk: string, detectedRisk: string): number {
   const rule = order[ruleRisk] ?? 0;
   const detected = order[detectedRisk] ?? 0;
 
-  if (rule === detected) return 40;
-  if (rule === detected - 1) return 25;
-  if (rule === detected + 1) return 15;
+  if (rule === detected) return 20;
+  if (rule === detected - 1) return 10;
+  if (rule === detected + 1) return 5;
   return 5;
 }
 
 function keywordMatchScore(message: string, row: GuidelineRow): number {
   const text = normalizeText(message);
+  const normalizedText = text.replace(/\s/g, "");
   const keywords = parseTriggerKeywords(row.trigger_keywords);
 
   let score = 0;
+
   for (const keyword of keywords) {
-    if (keyword && text.includes(keyword)) score += 20;
+    const normalizedKeyword = normalizeText(keyword).replace(/\s/g, "");
+
+    if (normalizedKeyword && normalizedText.includes(normalizedKeyword)) {
+      score += 50;
+    }
   }
 
-  if (row.situation && text.includes(normalizeText(row.situation))) score += 10;
-  if (row.category && text.includes(normalizeText(row.category))) score += 8;
+  if (row.situation) {
+    const situation = normalizeText(row.situation).replace(/\s/g, "");
+    if (normalizedText.includes(situation)) score += 20;
+  }
+
+  if (row.category) {
+    const category = normalizeText(row.category).replace(/\s/g, "");
+    if (normalizedText.includes(category)) score += 10;
+  }
 
   return score;
 }
