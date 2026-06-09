@@ -132,146 +132,175 @@ function normalizeText(text: string) {
 
 function detectRiskLevel(message: string): RiskLevel {
   const text = normalizeText(message);
+  const normalizedMessage = text.replace(/\s/g, "");
 
   const imminentKeywords = [
-    "지금 죽고",
-    "당장 죽고",
-    "오늘 죽",
-    "지금 끝내",
-    "오늘 끝내",
-    "곧 죽을",
-    "지금 실행",
+    "지금죽고",
+    "당장죽고",
+    "오늘죽",
+    "지금끝내",
+    "오늘끝내",
+    "곧죽을",
+    "지금실행",
     "유서",
-    "방법 찾",
-    "어떻게 죽",
+    "방법찾",
+    "어떻게죽",
     "준비했",
     "계획했",
-    "도구 준비",
-    "약 먹었",
-    "이미 먹었",
-    "손목 그었",
-    "목 맸",
+    "도구준비",
+    "약먹었",
+    "이미먹었",
+    "손목그었",
+    "목맸",
     "뛰어내렸",
     "시도했",
-    "목숨을 끊",
-    "자살할 거",
-    "죽으러 갈",
+    "목숨을끊",
+    "자살할거",
+    "죽으러갈",
     "번개탄",
     "칼로",
-    "목을 맬",
+    "목을맬",
     "뛰어내릴",
-    "한강 가",
-    "옥상 올라",
-    "가스 틀",
+    "한강가",
+    "옥상올라",
+    "가스틀",
   ];
 
   const highKeywords = [
-    "죽고 싶",
-    "너무 죽고 싶",
-    "진짜 죽고 싶",
-    "계속 죽고 싶",
-    "맨날 죽고 싶",
-    "사라지고 싶",
-    "없어지고 싶",
-    "살고 싶지",
-    "살 이유 없",
-    "끝내고 싶",
-    "그만 살고 싶",
-    "자살 생각",
-    "죽는 생각",
-    "계속 생각나",
-    "자해하고 싶",
-    "해치고 싶",
-    "죽는 게 낫",
-    "사는 게 의미 없",
+    "죽고싶",
+    "너무죽고싶",
+    "진짜죽고싶",
+    "계속죽고싶",
+    "맨날죽고싶",
+    "사라지고싶",
+    "없어지고싶",
+    "살고싶지",
+    "살이유없",
+    "끝내고싶",
+    "그만살고싶",
+    "자살생각",
+    "죽는생각",
+    "계속생각나",
+    "자해하고싶",
+    "해치고싶",
+    "죽는게낫",
+    "사는게의미없",
   ];
 
   const mediumKeywords = [
-    "너무 힘들",
-    "버티기 힘들",
+    "너무힘들",
+    "버티기힘들",
     "지치고",
     "지쳤",
-    "희망이 없",
-    "미래가 없",
+    "희망이없",
+    "미래가없",
     "막막",
     "우울",
     "불안",
     "불안해",
-    "잠이 안 와",
+    "잠이안와",
     "불면",
-    "식욕이 없",
+    "식욕이없",
     "무기력",
-    "아무것도 하기 싫",
-    "의욕이 없",
+    "아무것도하기싫",
+    "의욕이없",
     "외롭",
-    "혼자인 것 같",
-    "아무도 없",
+    "혼자인것같",
+    "아무도없",
   ];
 
   const negativeContext = [
-    "죽고 싶지 않",
-    "자살 안 할",
-    "생각은 있지만 안 할",
-    "실행할 생각은 없",
-    "해치진 않을",
+    "죽고싶지않",
+    "자살안할",
+    "생각은있지만안할",
+    "실행할생각은없",
+    "해치진않을",
   ];
 
-  const hasNegativeContext = negativeContext.some((k) => text.includes(k));
+  const hasNegativeContext = negativeContext.some((k) =>
+    normalizedMessage.includes(k.replace(/\s/g, ""))
+  );
 
-  if (!hasNegativeContext && imminentKeywords.some((k) => text.includes(k))) return "imminent";
-  if (!hasNegativeContext && highKeywords.some((k) => text.includes(k))) return "high";
-  if (mediumKeywords.some((k) => text.includes(k))) return "medium";
 
+if (
+  imminentKeywords.some(keyword =>
+    normalizedMessage.includes(keyword.replace(/\s/g, ""))
+  )
+) {
+  return "imminent";
+}
+
+if (
+  highKeywords.some(keyword =>
+    normalizedMessage.includes(keyword.replace(/\s/g, ""))
+  )
+) {
+  return "high";
+}
+
+if (hasNegativeContext) {
   return "low";
+}
+
+if (
+  mediumKeywords.some(keyword =>
+    normalizedMessage.includes(keyword.replace(/\s/g, ""))
+  )
+) {
+  return "medium";
+}
+
+return "low";
 }
 
 function detectRiskDetailState(text: string): RiskDetailState {
   const normalized = normalizeText(text);
+  const normalizedText = normalized.replace(/\s/g, "");
 
   const alonePatterns = [
-    "혼자 있어",
-    "지금 혼자",
-    "방 안에 혼자",
-    "집에 혼자",
-    "아무도 없어",
-    "주변에 아무도 없어",
-    "혼자 있",
-    "나 혼자",
+    "혼자있어",
+    "지금혼자",
+    "방안에혼자",
+    "집에혼자",
+    "아무도없어",
+    "주변에아무도없어",
+    "혼자있",
+    "나혼자",
   ];
 
   const currentIntentPatterns = [
-    "지금 죽고 싶",
-    "당장 죽고 싶",
-    "오늘 죽고 싶",
-    "지금 끝내고 싶",
-    "오늘 끝내고 싶",
-    "바로 죽고 싶",
-    "지금 하고 싶",
+    "지금죽고싶",
+    "당장죽고싶",
+    "오늘죽고싶",
+    "지금끝내고싶",
+    "오늘끝내고싶",
+    "바로죽고싶",
+    "지금하고싶",
   ];
 
   const frequentPatterns = [
-    "계속 생각나",
-    "자꾸 생각나",
-    "매일 생각나",
-    "맨날 생각나",
-    "계속 죽고 싶",
+    "계속생각나",
+    "자꾸생각나",
+    "매일생각나",
+    "맨날생각나",
+    "계속죽고싶",
     "반복돼",
-    "계속 엄청",
+    "계속엄청",
   ];
 
   const planPatterns = [
-    "방법 찾",
+    "방법찾",
     "계획했",
     "준비했",
-    "도구 준비",
+    "도구준비",
     "유서",
-    "약 먹을",
+    "약먹을",
     "뛰어내릴",
-    "목 맬",
+    "목맬",
     "번개탄",
     "칼로",
-    "한강 가",
-    "옥상 올라",
+    "한강가",
+    "옥상올라",
   ];
 
   return {
@@ -284,8 +313,12 @@ function detectRiskDetailState(text: string): RiskDetailState {
 
 function buildRuleBasedLinkageReply(
   finalRisk: RiskLevel,
+  turnCount: number,
 ): RuleBasedReply {
-  if (finalRisk !== "low") {
+  if (finalRisk === "low" || finalRisk === "medium") {
+    if (turnCount < 4) {
+      return { handled: false };
+    }
     return {
       handled: true,
       linkageIntent: "ask_center_use",
@@ -389,6 +422,7 @@ function getTurnCount(conversationHistory: ConversationMessage[] = []): number {
 
 function classifyGuardrailCategory(message: string): GuardrailCategory {
   const text = normalizeText(message);
+  const normalizedText = text.replace(/\s/g, "");
 
   const promptInjectionPatterns = [
     "시스템 프롬프트",
@@ -461,12 +495,47 @@ function classifyGuardrailCategory(message: string): GuardrailCategory {
     "농담해봐",
   ];
 
-  if (promptInjectionPatterns.some((p) => text.includes(p))) return "prompt_injection";
-  if (selfHarmInstructionPatterns.some((p) => text.includes(p))) return "self_harm_instruction";
-  if (violenceInstructionPatterns.some((p) => text.includes(p))) return "violence_instruction";
-  if (illegalInstructionPatterns.some((p) => text.includes(p))) return "illegal_instruction";
-  if (sexualContentPatterns.some((p) => text.includes(p))) return "sexual_content";
-  if (offTopicPatterns.some((p) => text.includes(p))) return "off_topic";
+  if (
+    promptInjectionPatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+    )
+  )
+    return "prompt_injection";
+
+  if (
+    selfHarmInstructionPatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+    )
+  )
+    return "self_harm_instruction";
+
+  if (
+    violenceInstructionPatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+    )
+  )
+    return "violence_instruction";
+
+  if (
+    illegalInstructionPatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+    )
+  )
+    return "illegal_instruction";
+
+  if (
+    sexualContentPatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+    )
+  )
+    return "sexual_content";
+
+  if (
+    offTopicPatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+    )
+  )
+    return "off_topic";
 
   return "none";
 }
@@ -895,9 +964,6 @@ async function sendAdminAlertViaResend(params: {
       <hr />
       <h3>최근 대화</h3>
       <ul>${conversationPreview}</ul>
-      <hr />
-      <h3>매칭된 가이드라인</h3>
-      ${guidelineHtml}
       <hr />
       <p><strong>발송 시각:</strong> ${new Date().toISOString()}</p>
     `,
@@ -1371,7 +1437,7 @@ Deno.serve(async (req) => {
         ? getTimeWarningMessage(remainingMs)
         : null;
 
-    const ruleBasedReply = buildRuleBasedLinkageReply(finalDetectedRisk);
+    const ruleBasedReply = buildRuleBasedLinkageReply(finalDetectedRisk, turnCount);
 
     if (ruleBasedReply.handled && ruleBasedReply.reply) {
       return new Response(
