@@ -304,11 +304,99 @@ function detectRiskDetailState(text: string): RiskDetailState {
   ];
 
   return {
-    isAlone: alonePatterns.some((p) => normalized.includes(p)),
-    hasCurrentIntent: currentIntentPatterns.some((p) => normalized.includes(p)),
-    hasFrequentThoughts: frequentPatterns.some((p) => normalized.includes(p)),
-    hasPlan: planPatterns.some((p) => normalized.includes(p)),
-  };
+    isAlone: alonePatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+  ),
+    hasCurrentIntent: currentIntentPatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+  ),
+    hasFrequentThoughts: frequentPatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+  ),
+    hasPlan: planPatterns.some((p) =>
+      normalizedText.includes(p.replace(/\s/g, ""))
+  ),
+};
+}
+
+async function classifyRiskWithLLM(message: string): Promise<RiskLevel> {
+  console.log("LLM classify start:", message);
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        input: [
+          {
+            role: "system",
+            content: `
+사용자의 자살 위험도를 low, medium, high, imminent 중 하나로 분류하세요.
+
+기준:
+- low: 일반적인 스트레스
+- medium: 우울, 불안, 절망감 표현
+- high: 죽고 싶다, 죽어야 하나 싶다, 죽어야 되나 생각한다, 죽는 게 나을 것 같다, 사라지고 싶다, 없어지고 싶다, 잠들면 안 깨고 싶다 등 자살 사고 표현
+- imminent: 지금/오늘 실행, 계획, 준비, 도구 확보, 자살 시도, 유서 작성 언급
+
+추가 규칙:
+- 사용자가 죽음 자체를 고려하거나 죽는 것이 해결책처럼 표현하면 high로 분류합니다.
+- 표현이 애매하면 더 높은 위험도로 해석합니다.
+- low로 과소평가하는 것보다 high로 분류하는 것을 우선합니다.
+
+반드시 JSON만 출력:
+{"risk":"low"}
+            `.trim(),
+          },
+          {
+            role: "user",
+            content: message,
+          },
+        ],
+      }),
+    });
+
+    const data = await res.json();
+
+    console.log("LLM raw response:", JSON.stringify(data));
+    console.log("LLM output_text:", data.output_text);
+
+    if (!res.ok) {
+      console.error("LLM risk API error:", JSON.stringify(data));
+      return "low";
+    }
+
+    const rawOutput =
+      data.output_text ??
+      data.output?.[0]?.content?.[0]?.text ??
+      "";
+
+    const outputText = String(rawOutput)
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    const parsed = JSON.parse(outputText);
+
+    if (["low", "medium", "high", "imminent"].includes(parsed.risk)) {
+      return parsed.risk as RiskLevel;
+    }
+
+    return "low";
+  } catch (e) {
+    console.error("classifyRiskWithLLM error:", e);
+    return "low";
+  }
+}
+
+function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
+  const order: RiskLevel[] = ["low", "medium", "high", "imminent"];
+
+  return order[Math.max(order.indexOf(a), order.indexOf(b))];
 }
 
 function buildRuleBasedLinkageReply(
@@ -1296,7 +1384,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    const currentDetectedRisk = detectRiskLevel(message);
+    const ruleDetectedRisk = detectRiskLevel(message);
+    console.log("ruleDetectedRisk:", ruleDetectedRisk);
+
+    const llmDetectedRisk = await classifyRiskWithLLM(message);
+    console.log("llmDetectedRisk:", llmDetectedRisk);
+
+    const currentDetectedRisk = maxRisk(ruleDetectedRisk, llmDetectedRisk);
+    console.log("currentDetectedRisk:", currentDetectedRisk);
+
     const guardrailCategory = classifyGuardrailCategory(message);
 
     if (guardrailCategory !== "none") {
@@ -1325,7 +1421,10 @@ Deno.serve(async (req) => {
       ? buildConversationTextForFinalRisk(conversationHistory, message)
       : message;
 
-    const textFinalRisk = detectRiskLevel(finalRiskInput);
+    const ruleFinalRisk = detectRiskLevel(finalRiskInput);
+    const llmFinalRisk = await classifyRiskWithLLM(finalRiskInput);
+    const textFinalRisk = maxRisk(ruleFinalRisk, llmFinalRisk);
+
     const riskDetailState = detectRiskDetailState(finalRiskInput);
     const finalDetectedRisk = escalateRiskForEnvironment(textFinalRisk, riskDetailState);
 
