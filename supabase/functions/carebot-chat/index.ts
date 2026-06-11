@@ -127,12 +127,12 @@ type RuleBasedReply = {
 };
 
 type LinkageInfo = {
+  id?: string;
   user_id: string;
-  center_use_status: "yes" | "no" | "unknown" | null;
   center_name: string | null;
-  region_name: string | null;
-  center_share_consent: string | null;
-  local_resource_consent: string | null;
+  region: string | null;
+  center_use_status: "yes" | "no" | "unknown" | null;
+  linkage_consent: boolean | null;
 };
 
 function normalizeText(text: string) {
@@ -418,8 +418,8 @@ function buildRuleBasedLinkageReply(
     return { handled: false };
   }
 
-  if (linkageInfo?.center_use_status) {
-    return { handled: false };
+  if (linkageInfo?.center_use_status || linkageInfo?.center_name) {
+  return { handled: false };
   }
 
   if (finalRisk === "low" || finalRisk === "medium") {
@@ -1227,7 +1227,13 @@ Deno.serve(async (req) => {
 
       await supabase.from("patient_linkage_info").upsert({
         user_id: user_id,
-        region_name: submittedRegionName,
+        linkage_consent: true,
+        updated_at: new Date().toISOString(),
+      });
+
+      await supabase.from("patient_linkage_info").upsert({
+        user_id: user_id,
+        linkage_consent: false,
         updated_at: new Date().toISOString(),
       });
 
