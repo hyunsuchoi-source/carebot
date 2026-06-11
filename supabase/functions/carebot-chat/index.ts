@@ -126,6 +126,15 @@ type RuleBasedReply = {
   recommendedActions?: RecommendedAction[];
 };
 
+type LinkageInfo = {
+  user_id: string;
+  center_use_status: "yes" | "no" | "unknown" | null;
+  center_name: string | null;
+  region_name: string | null;
+  center_share_consent: string | null;
+  local_resource_consent: string | null;
+};
+
 function normalizeText(text: string) {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -403,19 +412,24 @@ function buildRuleBasedLinkageReply(
   finalRisk: RiskLevel,
   turnCount: number,
   conversationHistory: ConversationMessage[],
+  linkageInfo: LinkageInfo | null,
 ): RuleBasedReply {
   if (hasAskedCenterUse(conversationHistory)) {
     return { handled: false };
   }
 
+  if (linkageInfo?.center_use_status) {
+    return { handled: false };
+  }
+
   if (finalRisk === "low" || finalRisk === "medium") {
-    if (turnCount < 4) return { handled: false };
+    if (turnCount < 10) return { handled: false };
 
     return {
       handled: true,
       linkageIntent: "ask_center_use",
       reply:
-        "말씀해 주신 내용을 보면 혼자만 안고 있기보다 도움받을 수 있는 곳과도 연결해두면 좋을 것 같아요. 혹시 현재 정신건강복지센터나 상담기관을 이용 중이신가요?",
+        "상담을 진행하기 전에 필요한 경우 적절한 도움과 연결해 드리기 위해 한 가지 확인할게요. 혹시 현재 정신건강복지센터나 상담기관을 이용 중이신가요?",
       quickReplies: [
         { label: "이용 중이에요", value: "center_use_yes" },
         { label: "이용하지 않아요", value: "center_use_no" },
@@ -976,11 +990,26 @@ ${recentAssistant || "- 없음"}
 `.trim();
 }
 
+async function getLinkageInfo(userId: string): Promise<LinkageInfo | null> {
+  const { data, error } = await supabase
+    .from("patient_linkage_info")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("failed to load linkage info:", error);
+    return null;
+  }
+
+  return data as LinkageInfo | null;
+}
+
 async function getLatestAssessmentScores(userId: string): Promise<LatestAssessmentScores> {
   const { data, error } = await supabase
     .from("assessments")
     .select("assessment_type, score, assessed_at")
-    .eq("patient_id", userId)
+    .eq("user_id", userId)
     .in("assessment_type", ["PHQ-9", "GAD-7", "SBQ-R"])
     .order("assessed_at", { ascending: false });
 
@@ -1133,6 +1162,11 @@ Deno.serve(async (req) => {
 
     const turnCount = getTurnCount(conversationHistory);
 
+    const linkageInfo = await getLinkageInfo(user_id);
+
+    console.log("🔍 linkageInfo:", linkageInfo);
+    console.log("🔍 user_id:", user_id);
+
     const pendingLinkageStep = inferPendingLinkageStep(conversationHistory);
 
     if (
@@ -1140,6 +1174,13 @@ Deno.serve(async (req) => {
       !isSystemButtonValue(message)
     ) {
       const submittedCenterName = centerName?.trim() || message.trim();
+
+      await supabase.from("patient_linkage_info").upsert({
+        user_id: user_id,
+        center_use_status: "yes",
+        center_name: submittedCenterName,
+        updated_at: new Date().toISOString(),
+      });
 
       return new Response(
         JSON.stringify({
@@ -1184,10 +1225,16 @@ Deno.serve(async (req) => {
     ) {
       const submittedRegionName = regionName?.trim() || message.trim();
 
+      await supabase.from("patient_linkage_info").upsert({
+        user_id: user_id,
+        region_name: submittedRegionName,
+        updated_at: new Date().toISOString(),
+      });
+
       return new Response(
         JSON.stringify({
           reply:
-            `${submittedRegionName} 기준으로 도움받을 수 있는 지역사회 자원을 확인해볼게요. 담당 사회복지사가 관련 정보를 안내해 드릴 예정입니다. 지금은 상담을 계속 이어가도 괜찮아요. 지금 가장 힘들게 느껴지는 부분은 무엇인가요?.`,
+            `${submittedRegionName} 기준으로 도움받을 수 있는 지역사회 자원을 확인해볼게요. 담당 사회복지사가 관련 정보를 안내해 드릴 예정입니다. 지금은 상담을 계속 이어가도 괜찮아요. 지금 가장 힘들게 느껴지는 부분은 무엇인가요?`,
           currentDetectedRisk: "low",
           assessmentDetectedRisk: "low",
           finalDetectedRisk: "low",
@@ -1206,6 +1253,12 @@ Deno.serve(async (req) => {
     }
 
     if (message === "center_use_yes") {
+      await supabase.from("patient_linkage_info").upsert({
+        user_id: user_id,
+        center_use_status: "yes",
+        updated_at: new Date().toISOString(),
+      });
+
       return new Response(
         JSON.stringify({
           reply:
@@ -1238,6 +1291,12 @@ Deno.serve(async (req) => {
     }
 
     if (message === "center_use_no" || message === "center_use_unknown") {
+      await supabase.from("patient_linkage_info").upsert({
+        user_id: user_id,
+        center_use_status: message === "center_use_no" ? "no" : "unknown",
+        updated_at: new Date().toISOString(),
+      });
+
       return new Response(
         JSON.stringify({
           reply:
@@ -1269,6 +1328,12 @@ Deno.serve(async (req) => {
     }
 
     if (message === "center_share_consent_yes") {
+      await supabase.from("patient_linkage_info").upsert({
+        user_id: user_id,
+        center_share_consent: "yes",
+        updated_at: new Date().toISOString(),
+      });
+
       return new Response(
         JSON.stringify({
           reply:
@@ -1291,6 +1356,12 @@ Deno.serve(async (req) => {
     }
 
     if (message === "center_share_consent_no") {
+      await supabase.from("patient_linkage_info").upsert({
+        user_id: user_id,
+        center_share_consent: "no",
+        updated_at: new Date().toISOString(),
+      });
+
       return new Response(
         JSON.stringify({
           reply:
@@ -1313,6 +1384,12 @@ Deno.serve(async (req) => {
     }
 
     if (message === "local_resource_consent_yes") {
+      await supabase.from("patient_linkage_info").upsert({
+        user_id: user_id,
+        local_resource_consent: "yes",
+        updated_at: new Date().toISOString(),
+      });
+
       return new Response(
         JSON.stringify({
           reply:
@@ -1338,6 +1415,12 @@ Deno.serve(async (req) => {
     }
 
     if (message === "local_resource_consent_no") {
+      await supabase.from("patient_linkage_info").upsert({
+        user_id: user_id,
+        local_resource_consent: "no",
+        updated_at: new Date().toISOString(),
+      });
+
       return new Response(
         JSON.stringify({
           reply:
@@ -1462,8 +1545,6 @@ Deno.serve(async (req) => {
       ? isFinalTurn
       : isFinalTurn && (finalDetectedRisk === "high" || finalDetectedRisk === "imminent");
 
-    // imminent도 다른 non-low 위험도와 동일하게 정신건강복지센터 이용 여부 확인 로직으로 진행합니다.
-
     const { data: guidelineRows, error: guidelineError } = await supabase
       .from("guidelines")
       .select(`
@@ -1552,7 +1633,12 @@ Deno.serve(async (req) => {
         ? getTimeWarningMessage(remainingMs)
         : null;
 
-    const ruleBasedReply = buildRuleBasedLinkageReply(finalDetectedRisk, turnCount, conversationHistory);
+    const ruleBasedReply = buildRuleBasedLinkageReply(
+      finalDetectedRisk,
+      turnCount,
+      conversationHistory,
+      linkageInfo
+    );
 
     if (ruleBasedReply.handled && ruleBasedReply.reply) {
       return new Response(
@@ -1589,6 +1675,33 @@ Deno.serve(async (req) => {
       riskDetailState,
       conversationHistory
     );
+
+    const shouldMentionLinkage =
+      linkageInfo &&
+      turnCount >= 4 &&
+      finalDetectedRisk !== "high" &&
+      finalDetectedRisk !== "imminent";
+    
+      const linkageInfoText = linkageInfo
+  ? `
+[저장된 연계 정보]
+- 정신건강복지센터/상담기관 이용 여부: ${linkageInfo.center_use_status ?? "없음"}
+- 이용 중인 기관명: ${linkageInfo.center_name ?? "없음"}
+- 거주 지역: ${linkageInfo.region_name ?? "없음"}
+- 기존 기관 전달 동의: ${linkageInfo.center_share_consent ?? "없음"}
+- 지역사회 자원 연계 동의: ${linkageInfo.local_resource_consent ?? "없음"}
+
+[연계 정보 사용 규칙]
+- 위 정보는 내부 참고용입니다.
+- 상담 시작 직후에는 저장된 기관 정보를 먼저 말하지 않습니다.
+- 사용자가 기관, 센터, 연계, 담당자 전달, 도움 연결에 대해 먼저 말한 경우에만 저장된 기관 정보를 확인합니다.
+- 일상 대화 중에는 정신건강복지센터나 상담기관 이용 여부를 먼저 묻지 않습니다.
+- 이미 저장된 기관 이용 여부나 기관명이 있으면 같은 질문을 반복하지 않습니다.
+`
+  : `
+[저장된 연계 정보]
+- 저장된 정신건강복지센터/상담기관 정보가 없습니다.
+`;
 
     const systemPrompt = `
 당신은 삼성서울병원 생명사랑위기대응센터의 AI 기반 상담 챗봇 CAREBot입니다.
@@ -1630,6 +1743,8 @@ Deno.serve(async (req) => {
 
 [반복 질문 방지]
 ${getRepeatedQuestionGuardText(conversationHistory)}
+
+${linkageInfoText}
 
 [현재 대화 해석]
 - 현재 메시지 위험도: ${currentDetectedRisk}
