@@ -922,6 +922,28 @@ function isShortReply(message: string): boolean {
   return trimmed.length <= 3 || ["응", "네", "아니", "몰라", "음", "으"].includes(trimmed);
 }
 
+function shouldRecommendHealingContent(message: string): boolean {
+  const text = message
+    .replace(/\s+/g, "")
+    .toLowerCase();
+
+  const patterns = [
+    "뭘해야",
+    "뭐해야",
+    "어떻게해야",
+    "방법을모르",
+    "방법모르",
+    "모르겠",
+    "막막",
+    "아무것도못하",
+    "불안해서아무것도",
+    "진정이안",
+    "마음이복잡",
+  ];
+
+  return patterns.some((p) => text.includes(p));
+}
+
 function getRecentAssistantMessages(conversationHistory: ConversationMessage[]): string[] {
   return conversationHistory
     .filter((m) => m.role === "assistant" && typeof m.content === "string")
@@ -1875,6 +1897,16 @@ ${conversationRuleText}
         conversationMode,
         linkageIntent: "none",
         quickReplies: [],
+
+        recommendedActions: shouldRecommendHealingContent(message)
+          ? [
+               {
+                  label: "마음치유 콘텐츠 보기",
+                  action: "open_healing_content",
+                  route: "/healing-content",
+                },
+            ]
+          : [],
         ruleBasedHandled: false,
         sessionStartTime,
         elapsedMs,
