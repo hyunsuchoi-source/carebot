@@ -173,6 +173,21 @@ function detectRiskLevel(message: string): RiskLevel {
     "한강가",
     "옥상올라",
     "가스틀",
+    "유언",
+    "작별인사",
+    "마지막",
+    "더이상못버틸",
+    "할만큼했",
+    "살고싶지",
+    "살이유없",
+    "끝내고싶",
+    "지쳤",
+    "답이없",
+    "방법이없",
+    "나아질것같지않",
+    "계좌정리",
+    "주식정리",
+    "보험금"
   ];
 
   const highKeywords = [
@@ -183,9 +198,6 @@ function detectRiskLevel(message: string): RiskLevel {
     "맨날죽고싶",
     "사라지고싶",
     "없어지고싶",
-    "살고싶지",
-    "살이유없",
-    "끝내고싶",
     "그만살고싶",
     "자살생각",
     "죽는생각",
@@ -194,6 +206,10 @@ function detectRiskLevel(message: string): RiskLevel {
     "해치고싶",
     "죽는게낫",
     "사는게의미없",
+    "눈뜨고싶지않",
+    "도망가고싶",
+    "포기하고싶",
+    "모르겠"
   ];
 
   const mediumKeywords = [
