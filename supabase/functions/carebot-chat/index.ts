@@ -944,6 +944,28 @@ function shouldRecommendHealingContent(message: string): boolean {
   return patterns.some((p) => text.includes(p));
 }
 
+function shouldRecommendCrisisGuide(message: string): boolean {
+  const text = message
+    .replace(/\s+/g, "")
+    .toLowerCase();
+
+  const patterns = [
+    "도움받",
+    "연락처",
+    "전화번호",
+    "어디연락",
+    "상담받",
+    "기관알려",
+    "센터알려",
+    "24시간",
+    "응급",
+    "도와줄곳",
+  ];
+
+  return patterns.some((p) => text.includes(p));
+}
+
+
 function getRecentAssistantMessages(conversationHistory: ConversationMessage[]): string[] {
   return conversationHistory
     .filter((m) => m.role === "assistant" && typeof m.content === "string")
@@ -1190,6 +1212,30 @@ Deno.serve(async (req) => {
           conversationEnded: false,
           turnCount: 0,
           quickReplies: [],
+
+          recommendedActions: [
+            ...(shouldRecommendHealingContent(message)
+              ? [
+                  {
+                    label: "마음치유 콘텐츠 보기",
+                    action: "open_healing_content",
+                    route: "/healing-content",
+                  },
+                ]
+              : []),
+
+            ...(shouldRecommendCrisisGuide(message)
+             ? [
+                  {
+                    label: "위기대응 가이드 보기",
+                    action: "open_crisis_guide",
+                    route: "/crisis-guide",
+                  },
+                ]
+              : []),
+            ],
+
+          ruleBasedHandled: false,
           linkageIntent: "none",
           ruleBasedHandled: false,
           sessionStartTime: session_start_time ?? new Date().toISOString(),
