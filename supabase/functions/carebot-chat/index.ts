@@ -1706,7 +1706,7 @@ Deno.serve(async (req) => {
     if (message === "center_share_consent_yes") {
       await supabase.from("patient_linkage_info").upsert({
         user_id: user_id,
-        center_share_consent: "yes",
+        center_share_consent: "true",
         updated_at: new Date().toISOString(),
       });
 
@@ -1734,7 +1734,7 @@ Deno.serve(async (req) => {
     if (message === "center_share_consent_no") {
       await supabase.from("patient_linkage_info").upsert({
         user_id: user_id,
-        center_share_consent: "no",
+        center_share_consent: "false",
         updated_at: new Date().toISOString(),
       });
 
@@ -1762,7 +1762,7 @@ Deno.serve(async (req) => {
     if (message === "local_resource_consent_yes") {
       await supabase.from("patient_linkage_info").upsert({
         user_id: user_id,
-        local_resource_consent: "yes",
+        local_resource_consent: "true",
         updated_at: new Date().toISOString(),
       });
 
@@ -1793,7 +1793,7 @@ Deno.serve(async (req) => {
     if (message === "local_resource_consent_no") {
       await supabase.from("patient_linkage_info").upsert({
         user_id: user_id,
-        local_resource_consent: "no",
+        local_resource_consent: "false",
         updated_at: new Date().toISOString(),
       });
 
