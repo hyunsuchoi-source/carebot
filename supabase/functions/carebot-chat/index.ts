@@ -1590,10 +1590,13 @@ Deno.serve(async (req) => {
       pendingLinkageStep === "ask_region" &&
       !isSystemButtonValue(message)
     ) {
-      const submittedRegionName = regionName?.trim() || message.trim();
+      const submittedRegionName = regionName?.trim() || message.trim()
+        .replace(/^거주\s*지역\s*:\s*/i, "")
+        .trim();
 
       await supabase.from("patient_linkage_info").upsert({
         user_id: user_id,
+        region : submittedRegionName,
         linkage_consent: true,
         updated_at: new Date().toISOString(),
       });
@@ -2068,7 +2071,7 @@ Deno.serve(async (req) => {
 [저장된 연계 정보]
 - 정신건강복지센터/상담기관 이용 여부: ${linkageInfo.center_use_status ?? "없음"}
 - 이용 중인 기관명: ${linkageInfo.center_name ?? "없음"}
-- 거주 지역: ${linkageInfo.region_name ?? "없음"}
+- 거주 지역: ${linkageInfo.region ?? "없음"}
 - 기존 기관 전달 동의: ${linkageInfo.center_share_consent ?? "없음"}
 - 지역사회 자원 연계 동의: ${linkageInfo.local_resource_consent ?? "없음"}
 
