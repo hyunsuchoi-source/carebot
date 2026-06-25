@@ -117,6 +117,24 @@ type LinkageIntent =
   | "region_received"
   | "none";
 
+type MiniAssessmentStage =
+  | "none"
+  | "offer"
+  | "depression"
+  | "anxiety"
+  | "helplessness"
+  | "need_help"
+  | "self_harm"
+  | "completed";
+
+type MiniAssessmentScores = {
+  depression?: number;
+  anxiety?: number;
+  helplessness?: number;
+  needHelp?: number;
+  selfHarm?: number;
+};  
+
 type RuleBasedReply = {
   handled: boolean;
   reply?: string;
@@ -917,6 +935,119 @@ function isDontKnowLike(message: string): boolean {
   ].some((k) => text.includes(k));
 }
 
+function shouldOfferMiniAssessment(
+  message: string,
+  conversationHistory: ConversationMessage[]
+): boolean {
+  const recentUserMessages = getRecentUserMessages(conversationHistory);
+  const allRecent = [...recentUserMessages, message];
+
+  const unclearCount = allRecent.filter((text) => isDontKnowLike(text)).length;
+
+  const normalized = message.replace(/\s+/g, "").toLowerCase();
+
+  const triggerPatterns = [
+    "모르겠",
+    "몰라",
+    "막막",
+    "뭘해야",
+    "뭐해야",
+    "방법을모르",
+    "어떻게해야",
+    "아무생각이안",
+    "말로못하",
+  ];
+
+  return unclearCount >= 2 || triggerPatterns.some((p) => normalized.includes(p));
+}
+
+function parseZeroToTenScore(message: string): number | null {
+  const match = message.match(/\b(10|[0-9])\b/);
+  if (!match) return null;
+
+  const score = Number(match[1]);
+  if (Number.isNaN(score) || score < 0 || score > 10) return null;
+
+  return score;
+}
+
+function detectMiniAssessmentRisk(scores: MiniAssessmentScores): RiskLevel {
+  const depression = scores.depression ?? 0;
+  const anxiety = scores.anxiety ?? 0;
+  const helplessness = scores.helplessness ?? 0;
+  const needHelp = scores.needHelp ?? 0;
+  const selfHarm = scores.selfHarm ?? 0;
+
+  const total = depression + anxiety + helplessness + needHelp + selfHarm;
+
+  if (selfHarm >= 7) return "imminent";
+  if (selfHarm >= 4 || total >= 35) return "high";
+  if (total >= 20) return "medium";
+  return "low";
+}
+
+function maxRiskLevel(...risks: RiskLevel[]): RiskLevel {
+  const order: RiskLevel[] = ["low", "medium", "high", "imminent"];
+
+  return risks.reduce((max, risk) => {
+    return order.indexOf(risk) > order.indexOf(max) ? risk : max;
+  }, "low");
+}
+
+function buildMiniAssessmentQuestion(stage: MiniAssessmentStage): {
+  reply: string;
+  nextStage: MiniAssessmentStage;
+  quickReplies: QuickReply[];
+} {
+  const scoreReplies = Array.from({ length: 11 }, (_, i) => ({
+    label: String(i),
+    value: `mini_score_${i}`,
+  }));
+
+  if (stage === "depression") {
+    return {
+      reply:
+        "현재 우울한 정도를 0에서 10점 중 하나로 표현한다면 몇 점 정도인가요?\n\n0은 전혀 우울하지 않음, 10은 매우 심하게 우울함을 의미해요.",
+      nextStage: "anxiety",
+      quickReplies: scoreReplies,
+    };
+  }
+
+  if (stage === "anxiety") {
+    return {
+      reply:
+        "현재 불안한 정도는 0에서 10점 중 몇 점 정도인가요?\n\n0은 전혀 불안하지 않음, 10은 매우 심하게 불안함을 의미해요.",
+      nextStage: "helplessness",
+      quickReplies: scoreReplies,
+    };
+  }
+
+  if (stage === "helplessness") {
+    return {
+      reply:
+        "현재 무기력하거나 아무것도 하기 어렵다고 느끼는 정도는 0에서 10점 중 몇 점 정도인가요?",
+      nextStage: "need_help",
+      quickReplies: scoreReplies,
+    };
+  }
+
+  if (stage === "need_help") {
+    return {
+      reply:
+        "지금 누군가의 도움이 필요하다고 느끼는 정도는 0에서 10점 중 몇 점 정도인가요?",
+      nextStage: "self_harm",
+      quickReplies: scoreReplies,
+    };
+  }
+
+  return {
+    reply:
+      "현재 스스로를 해치고 싶은 마음은 0에서 10점 중 몇 점 정도인가요?\n\n0은 전혀 없음, 10은 매우 강함을 의미해요.",
+    nextStage: "completed",
+    quickReplies: scoreReplies,
+  };
+}
+
 function isShortReply(message: string): boolean {
   const trimmed = message.trim();
   return trimmed.length <= 3 || ["응", "네", "아니", "몰라", "음", "으"].includes(trimmed);
@@ -1181,6 +1312,8 @@ Deno.serve(async (req) => {
       isFinalTurn = false,
       user_id,
       session_start_time,
+      miniAssessmentStage = "none",
+      miniAssessmentScores = {},
     }: {
       message?: string;
       centerName?: string;
@@ -1189,7 +1322,10 @@ Deno.serve(async (req) => {
       isFinalTurn?: boolean;
       user_id?: string;
       session_start_time?: string;
+      miniAssessmentStage?: MiniAssessmentStage;
+      miniAssessmentScores?: MiniAssessmentScores;
     } = await req.json();
+   
 
     if (!user_id || typeof user_id !== "string") {
       return new Response(JSON.stringify({ error: "user_id is required" }), {
@@ -1245,6 +1381,153 @@ Deno.serve(async (req) => {
     }
 
     const turnCount = getTurnCount(conversationHistory);
+
+    if (
+      miniAssessmentStage === "none" &&
+    shouldOfferMiniAssessment(message, conversationHistory)
+    ) {
+        return new Response(
+          JSON.stringify({
+            reply:
+              "말로 정리하기 어려울 수 있어요. 지금 상태를 조금 더 이해하기 위해 몇 가지 간단한 질문을 드려도 괜찮을까요?",
+            quickReplies: [
+              { label: "네", value: "mini_assessment_start" },
+              { label: "아니요", value: "mini_assessment_decline" },
+            ],
+            miniAssessmentStage: "offer",
+            miniAssessmentScores,
+            ruleBasedHandled: true,
+            conversationEnded: false,
+            turnCount,
+            linkageIntent: "none",
+          }),
+          { status: 200, headers: corsHeaders }
+        );
+      }
+
+      if (message === "mini_assessment_start") {
+        const q = buildMiniAssessmentQuestion("depression");
+
+        return new Response(
+          JSON.stringify({
+            reply: q.reply,
+            quickReplies: q.quickReplies,
+            miniAssessmentStage: q.nextStage,
+            miniAssessmentScores: {},
+            ruleBasedHandled: true,
+            conversationEnded: false,
+            turnCount,
+            linkageIntent: "none",
+          }),
+          { status: 200, headers: corsHeaders }
+        );
+      }
+
+      if (message === "mini_assessment_decline") {
+        return new Response(
+          JSON.stringify({
+            reply:
+              "괜찮아요. 질문에 답하지 않아도 됩니다. 지금은 편하게 떠오르는 말부터 이야기해주셔도 돼요.",
+            quickReplies: [],
+            miniAssessmentStage: "none",
+            miniAssessmentScores: {},
+            ruleBasedHandled: true,
+            conversationEnded: false,
+            turnCount,
+            linkageIntent: "none",
+          }),
+          { status: 200, headers: corsHeaders }
+        );
+      }
+
+
+       if (
+        miniAssessmentStage !== "none" &&
+        miniAssessmentStage !== "offer" &&
+        miniAssessmentStage !== "completed"
+      ) {
+        const score =
+          message.startsWith("mini_score_")
+            ? Number(message.replace("mini_score_", ""))
+            : parseZeroToTenScore(message);
+
+        if (score === null || Number.isNaN(score) || score < 0 || score > 10) {
+          return new Response(
+            JSON.stringify({
+              reply: "0부터 10 사이의 숫자로 선택해 주세요.",
+              quickReplies: Array.from({ length: 11 }, (_, i) => ({
+                label: String(i),
+                value: `mini_score_${i}`,
+              })),
+              miniAssessmentStage,
+              miniAssessmentScores,
+              ruleBasedHandled: true,
+              conversationEnded: false,
+              turnCount,
+              linkageIntent: "none",
+            }),
+            { status: 200, headers: corsHeaders }
+            );
+          }
+
+        const updatedScores: MiniAssessmentScores = { ...miniAssessmentScores };
+
+        if (miniAssessmentStage === "depression") updatedScores.depression = score;
+        if (miniAssessmentStage === "anxiety") updatedScores.anxiety = score;
+        if (miniAssessmentStage === "helplessness") updatedScores.helplessness = score;
+        if (miniAssessmentStage === "need_help") updatedScores.needHelp = score;
+        if (miniAssessmentStage === "self_harm") updatedScores.selfHarm = score;
+
+        if (miniAssessmentStage === "self_harm") {
+          const miniRisk = detectMiniAssessmentRisk(updatedScores);
+
+          return new Response(
+            JSON.stringify({
+              reply:
+                miniRisk === "low"
+                  ? "답변해주셔서 고마워요. 현재 상태를 참고해서 조금 더 편하게 이야기 이어가볼게요."
+                  : "답변해주셔서 고마워요. 지금 상태를 보면 도움이 더 필요할 수 있어 보여요. 혼자 감당하지 않도록 함께 확인해볼게요.",
+              quickReplies: [],
+              miniAssessmentStage: "completed",
+              miniAssessmentScores: updatedScores,
+              miniAssessmentRisk: miniRisk,
+              ruleBasedHandled: true,
+              conversationEnded: false,
+              turnCount,
+              linkageIntent: "none",
+            }),
+            { status: 200, headers: corsHeaders }
+          );
+        }
+
+     const nextStageMap: Record<MiniAssessmentStage, MiniAssessmentStage> = {
+       none: "none",
+      offer: "offer",
+      depression: "anxiety",
+      anxiety: "helplessness",
+      helplessness: "need_help",
+      need_help: "self_harm",
+      self_harm: "completed",
+      completed: "completed",
+     };
+
+    const nextStage = nextStageMap[miniAssessmentStage];
+    const q = buildMiniAssessmentQuestion(nextStage);
+
+    return new Response(
+      JSON.stringify({
+        reply: q.reply,
+        quickReplies: q.quickReplies,
+        miniAssessmentStage: q.nextStage,
+        miniAssessmentScores: updatedScores,
+        ruleBasedHandled: true,
+        conversationEnded: false,
+        turnCount,
+        linkageIntent: "none",
+      }),
+      { status: 200, headers: corsHeaders }
+    );
+  }
 
     const linkageInfo = await getLinkageInfo(user_id);
 
@@ -1599,7 +1882,15 @@ Deno.serve(async (req) => {
     const textFinalRisk = maxRisk(ruleFinalRisk, llmFinalRisk);
 
     const riskDetailState = detectRiskDetailState(finalRiskInput);
-    const finalDetectedRisk = escalateRiskForEnvironment(textFinalRisk, riskDetailState);
+    const miniAssessmentRisk =
+      miniAssessmentStage === "completed"
+        ? detectMiniAssessmentRisk(miniAssessmentScores)
+        : "low";
+
+    const finalDetectedRisk = maxRiskLevel(
+      escalateRiskForEnvironment(textFinalRisk, riskDetailState),
+      miniAssessmentRisk
+    );
 
     const sessionStartTime = session_start_time ?? new Date().toISOString();
     const sessionStartMs = parseSessionStartTime(sessionStartTime);
