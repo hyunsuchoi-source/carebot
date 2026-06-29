@@ -996,7 +996,6 @@ function maxRiskLevel(...risks: RiskLevel[]): RiskLevel {
 
 function buildMiniAssessmentQuestion(stage: MiniAssessmentStage): {
   reply: string;
-  nextStage: MiniAssessmentStage;
   quickReplies: QuickReply[];
 } {
   const scoreReplies = Array.from({ length: 11 }, (_, i) => ({
@@ -1008,7 +1007,6 @@ function buildMiniAssessmentQuestion(stage: MiniAssessmentStage): {
     return {
       reply:
         "현재 우울한 정도를 0에서 10점 중 하나로 표현한다면 몇 점 정도인가요?\n\n0은 전혀 우울하지 않음, 10은 매우 심하게 우울함을 의미해요.",
-      nextStage: "anxiety",
       quickReplies: scoreReplies,
     };
   }
@@ -1017,7 +1015,6 @@ function buildMiniAssessmentQuestion(stage: MiniAssessmentStage): {
     return {
       reply:
         "현재 불안한 정도는 0에서 10점 중 몇 점 정도인가요?\n\n0은 전혀 불안하지 않음, 10은 매우 심하게 불안함을 의미해요.",
-      nextStage: "helplessness",
       quickReplies: scoreReplies,
     };
   }
@@ -1026,7 +1023,6 @@ function buildMiniAssessmentQuestion(stage: MiniAssessmentStage): {
     return {
       reply:
         "현재 무기력하거나 아무것도 하기 어렵다고 느끼는 정도는 0에서 10점 중 몇 점 정도인가요?",
-      nextStage: "need_help",
       quickReplies: scoreReplies,
     };
   }
@@ -1035,7 +1031,6 @@ function buildMiniAssessmentQuestion(stage: MiniAssessmentStage): {
     return {
       reply:
         "지금 누군가의 도움이 필요하다고 느끼는 정도는 0에서 10점 중 몇 점 정도인가요?",
-      nextStage: "self_harm",
       quickReplies: scoreReplies,
     };
   }
@@ -1043,7 +1038,6 @@ function buildMiniAssessmentQuestion(stage: MiniAssessmentStage): {
   return {
     reply:
       "현재 스스로를 해치고 싶은 마음은 0에서 10점 중 몇 점 정도인가요?\n\n0은 전혀 없음, 10은 매우 강함을 의미해요.",
-    nextStage: "completed",
     quickReplies: scoreReplies,
   };
 }
@@ -1412,7 +1406,7 @@ Deno.serve(async (req) => {
           JSON.stringify({
             reply: q.reply,
             quickReplies: q.quickReplies,
-            miniAssessmentStage: q.nextStage,
+            miniAssessmentStage: "depression",
             miniAssessmentScores: {},
             ruleBasedHandled: true,
             conversationEnded: false,
@@ -1518,7 +1512,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         reply: q.reply,
         quickReplies: q.quickReplies,
-        miniAssessmentStage: q.nextStage,
+        miniAssessmentStage: nextStage,
         miniAssessmentScores: updatedScores,
         ruleBasedHandled: true,
         conversationEnded: false,
