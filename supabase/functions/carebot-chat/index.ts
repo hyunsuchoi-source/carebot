@@ -1064,7 +1064,7 @@ async function shouldOfferMiniAssessment(
     .length;
 
   return unclearCount >= 2;
-}}
+}
 
 function parseZeroToTenScore(message: string): number | null {
   const match = message.match(/\b(10|[0-9])\b/);
