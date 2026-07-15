@@ -935,31 +935,136 @@ function isDontKnowLike(message: string): boolean {
   ].some((k) => text.includes(k));
 }
 
-function shouldOfferMiniAssessment(
+type DontKnowContext =
+  | "state_unknown"
+  | "information_unknown"
+  | "general_unknown";
+
+async function classifyDontKnowContext(
   message: string,
   conversationHistory: ConversationMessage[]
-): boolean {
-  const recentUserMessages = getRecentUserMessages(conversationHistory);
-  const allRecent = [...recentUserMessages, message];
+): Promise<DontKnowContext> {
+  const recentHistory = conversationHistory
+    .slice(-6)
+    .map((m) => `${m.role}: ${m.content}`)
+    .join("\n");
 
-  const unclearCount = allRecent.filter((text) => isDontKnowLike(text)).length;
+  try {
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        input: [
+          {
+            role: "system",
+            content: `
+사용자의 "모르겠다", "몰라", "잘 모르겠다"는 표현의 의미를 분류하세요.
 
-  const normalized = message.replace(/\s+/g, "").toLowerCase();
+분류 기준:
+- state_unknown:
+  자신의 감정, 마음, 현재 상태를 표현하거나 이해하기 어려운 경우
+  예: "내 마음이 어떤지 모르겠어요", "무슨 감정인지 모르겠어요"
 
-  const triggerPatterns = [
-    "모르겠",
-    "몰라",
-    "막막",
-    "뭘해야",
-    "뭐해야",
-    "방법을모르",
-    "어떻게해야",
-    "아무생각이안",
-    "말로못하",
-  ];
+- information_unknown:
+  방법, 절차, 위치, 연락처, 사용법 등 외부 정보나 행동 방법을 모르는 경우
+  예: "호흡을 어떻게 하는지 모르겠어요", "어디에 연락해야 할지 모르겠어요"
 
-  return unclearCount >= 2 || triggerPatterns.some((p) => normalized.includes(p));
+- general_unknown:
+  위 두 범주로 명확하게 분류하기 어려운 단순하거나 맥락이 부족한 응답
+  예: "그냥 모르겠어요"
+
+반드시 아래 JSON 형식으로만 응답하세요.
+{"context":"state_unknown"}
+            `.trim(),
+          },
+          {
+            role: "user",
+            content: `
+최근 대화:
+${recentHistory}
+
+현재 사용자 발화:
+${message}
+            `.trim(),
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      console.error("dontKnow context API error:", await res.text());
+      return "general_unknown";
+    }
+
+    const data = await res.json();
+
+    const rawOutput =
+      data.output_text ??
+      data.output?.[0]?.content?.[0]?.text ??
+      "";
+
+    const outputText = String(rawOutput)
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    const parsed = JSON.parse(outputText);
+
+    if (
+      ["state_unknown", "information_unknown", "general_unknown"].includes(
+        parsed.context
+      )
+    ) {
+      return parsed.context as DontKnowContext;
+    }
+
+    return "general_unknown";
+  } catch (error) {
+    console.error("classifyDontKnowContext error:", error);
+    return "general_unknown";
+  }
 }
+
+async function shouldOfferMiniAssessment(
+  message: string,
+  conversationHistory: ConversationMessage[]
+): Promise<boolean> {
+
+  // "모르겠다" 계열이 아니면 바로 종료
+  if (!isDontKnowLike(message)) {
+    return false;
+  }
+
+  // LLM에게 의미 판별 요청
+  const context = await classifyDontKnowContext(
+    message,
+    conversationHistory
+  );
+
+  // 방법·정보를 모르는 경우
+  if (context === "information_unknown") {
+    return false;
+  }
+
+  // 자신의 상태를 표현하지 못하는 경우
+  if (context === "state_unknown") {
+    return true;
+  }
+
+  // 애매한 경우는 기존처럼 반복 여부 확인
+  const recentUserMessages =
+    getRecentUserMessages(conversationHistory);
+
+  const unclearCount = [...recentUserMessages, message]
+    .filter((text) => isDontKnowLike(text))
+    .length;
+
+  return unclearCount >= 2;
+}}
 
 function parseZeroToTenScore(message: string): number | null {
   const match = message.match(/\b(10|[0-9])\b/);
@@ -1377,8 +1482,11 @@ Deno.serve(async (req) => {
     const turnCount = getTurnCount(conversationHistory);
 
     if (
-      miniAssessmentStage === "none" &&
-    shouldOfferMiniAssessment(message, conversationHistory)
+    miniAssessmentStage === "none" &&
+    await shouldOfferMiniAssessment(
+        message,
+        conversationHistory
+    )
     ) {
         return new Response(
           JSON.stringify({
