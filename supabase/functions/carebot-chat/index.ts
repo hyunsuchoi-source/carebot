@@ -1413,6 +1413,7 @@ Deno.serve(async (req) => {
       session_start_time,
       miniAssessmentStage = "none",
       miniAssessmentScores = {},
+      miniAssessmentCompleted = false ,
     }: {
       message?: string;
       centerName?: string;
@@ -1482,11 +1483,12 @@ Deno.serve(async (req) => {
     const turnCount = getTurnCount(conversationHistory);
 
     if (
-    miniAssessmentStage === "none" &&
-    await shouldOfferMiniAssessment(
-        message,
-        conversationHistory
-    )
+      miniAssessmentStage === "none" &&
+      !miniAssessmentCompleted &&
+      await shouldOfferMiniAssessment(
+          message,
+          conversationHistory
+     )
     ) {
         return new Response(
           JSON.stringify({
@@ -1591,6 +1593,7 @@ Deno.serve(async (req) => {
                   : "답변해주셔서 고마워요. 지금 상태를 보면 도움이 더 필요할 수 있어 보여요. 혼자 감당하지 않도록 함께 확인해볼게요.",
               quickReplies: [],
               miniAssessmentStage: "completed",
+              miniAssessmentCompleted: true,
               miniAssessmentScores: updatedScores,
               miniAssessmentRisk: miniRisk,
               ruleBasedHandled: true,
