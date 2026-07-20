@@ -226,8 +226,7 @@ function detectRiskLevel(message: string): RiskLevel {
     "사는게의미없",
     "눈뜨고싶지않",
     "도망가고싶",
-    "포기하고싶",
-    "모르겠"
+    "포기하고싶"
   ];
 
   const mediumKeywords = [
@@ -1512,6 +1511,10 @@ Deno.serve(async (req) => {
 
     const turnCount = getTurnCount(conversationHistory);
 
+    const miniRuleRisk = detectRiskLevel(message);
+    const miniLlmRisk = await classifyRiskWithLLM(message);
+    const miniRisk = maxRisk(miniRuleRisk, miniLlmRisk);
+
     if (
       miniAssessmentStage === "none" &&
       !miniAssessmentCompleted &&
@@ -1530,6 +1533,10 @@ Deno.serve(async (req) => {
             ],
             miniAssessmentStage: "offer",
             miniAssessmentScores,
+
+            currentDetectedRisk: miniRisk,
+            finalDetectedRisk: miniRisk,
+            
             ruleBasedHandled: true,
             conversationEnded: false,
             turnCount,
