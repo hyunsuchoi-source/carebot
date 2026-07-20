@@ -929,9 +929,7 @@ function isDontKnowLike(message: string): boolean {
     "아무것도 하고 싶지 않아",
     "말하기 싫",
     "잘 모르겠",
-    "모르겟",
-    "으",
-    "음",
+    "모르겟"
   ].some((k) => text.includes(k));
 }
 
