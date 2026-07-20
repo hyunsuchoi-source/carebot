@@ -964,8 +964,37 @@ async function classifyDontKnowContext(
 
 분류 기준:
 - state_unknown:
-  자신의 감정, 마음, 현재 상태를 표현하거나 이해하기 어려운 경우
-  예: "내 마음이 어떤지 모르겠어요", "무슨 감정인지 모르겠어요"
+  사용자가 자신의 현재 감정이나 심리 상태 자체를 인식하거나 설명하지 못하는 경우에만 선택합니다.
+
+  즉,
+    - "나는 지금 어떤 감정인지 모르겠다."
+    - "내 마음을 모르겠다."
+    - "내 기분을 설명할 수 없다."
+  처럼 감정이나 심리 상태 자체를 이해하지 못하는 경우입니다.
+
+  다음과 같은 경우는 state_unknown가 아닙니다.
+  - 감정의 원인, 이유, 계기를 모르는 경우
+  - 문제를 어떻게 해결해야 할지 모르는 경우
+  - 자신의 선택이나 정체성에 대해 확신하지 못하는 경우
+  - 어떤 행동을 해야 할지 모르는 경우
+  - 사실이나 정보를 모르는 경우
+
+  이러한 경우는 information_unknown 또는 general_unknown로 분류합니다.
+
+  판단 기준
+
+  '모르는 대상'이 감정 그 자체이면 state_unknown입니다.
+
+  '모르는 대상'이 감정의 원인, 해결 방법, 선택, 정보, 정체성, 미래, 행동이라면 state_unknown가 아닙니다.
+
+주의사항
+state_unknown는 매우 드물게 선택합니다.
+사용자가 자신의 감정이나 심리 상태를 직접 이해하지 못한다고 말하는 경우에만 state_unknown를 선택합니다.
+조금이라도 애매하면 general_unknown를 선택하세요.
+판단이 애매한 경우에는 state_unknown를 선택하지 마세요.
+state_unknown는 사용자가 자신의 감정이나 심리 상태 자체를 이해하지 못한다고 명확하게 표현한 경우에만 선택합니다.
+
+확신이 없으면 general_unknown를 선택하세요.
 
 - information_unknown:
   방법, 절차, 위치, 연락처, 사용법 등 외부 정보나 행동 방법을 모르는 경우
@@ -1049,7 +1078,10 @@ async function shouldOfferMiniAssessment(
   }
 
   // 자신의 상태를 표현하지 못하는 경우
-  if (context === "state_unknown") {
+  if (
+    context === "state_unknown" &&
+    /(감정|기분|마음|상태|우울|불안)/.test(message)
+  ) {
     return true;
   }
 
