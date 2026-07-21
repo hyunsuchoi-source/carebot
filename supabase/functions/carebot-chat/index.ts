@@ -2380,15 +2380,30 @@ ${conversationRuleText}
         linkageIntent: "none",
         quickReplies: [],
 
-        recommendedActions: shouldRecommendHealingContent(message)
-          ? [
-               {
+        recommendedActions: [
+          ...(shouldRecommendHealingContent(message)
+            ? [
+                {
                   label: "마음치유 콘텐츠 보기",
                   action: "open_healing_content",
                   route: "/healing-content",
                 },
-            ]
-          : [],
+              ]
+            : []),
+
+          ...(finalDetectedRisk === "high" ||
+          finalDetectedRisk === "imminent" ||
+          shouldRecommendCrisisGuide(message)
+            ? [
+                {
+                  label: "위기대응 가이드 보기",
+                  action: "open_crisis_guide",
+                  route: "/crisis-guide",
+                },
+              ]
+            : []),
+        ],
+
         ruleBasedHandled: false,
         sessionStartTime,
         elapsedMs,
