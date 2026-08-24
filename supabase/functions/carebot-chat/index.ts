@@ -199,7 +199,6 @@ function detectRiskLevel(message: string): RiskLevel {
     "살고싶지",
     "살이유없",
     "끝내고싶",
-    "지쳤",
     "답이없",
     "방법이없",
     "나아질것같지않",
