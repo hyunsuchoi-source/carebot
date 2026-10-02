@@ -2017,9 +2017,11 @@ Deno.serve(async (req) => {
     const latestScores = await getLatestAssessmentScores(user_id);
     const assessmentDetectedRisk = detectAssessmentRisk(latestScores);
 
-    const finalRiskInput = isFinalTurn
-      ? buildConversationTextForFinalRisk(conversationHistory, message)
-      : message;
+    const finalRiskInput =
+      buildConversationTextForFinalRisk(
+        conversationHistory,
+        message
+    );
 
     const ruleFinalRisk = detectRiskLevel(finalRiskInput);
     const llmFinalRisk = await classifyRiskWithLLM(finalRiskInput);
