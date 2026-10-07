@@ -1966,24 +1966,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (turnCount > MAX_TURNS) {
-      return new Response(
-        JSON.stringify({
-          reply: "정해진 상담 횟수에 도달해 오늘 대화는 여기까지 진행할게요. 지금 많이 힘들거나 안전이 걱정되면 109, 119 또는 가까운 응급실에 바로 도움을 요청해 주세요.",
-          currentDetectedRisk: "low",
-          assessmentDetectedRisk: "low",
-          finalDetectedRisk: "low",
-          latestScores: { phq9: null, gad7: null, sbqr: null },
-          matchedGuidelines: [],
-          alertTriggered: false,
-          conversationEnded: true,
-          turnCount,
-          sessionStartTime: session_start_time ?? new Date().toISOString(),
-        }),
-        { status: 200, headers: corsHeaders }
-      );
-    }
-
     const ruleDetectedRisk = detectRiskLevel(message);
     console.log("ruleDetectedRisk:", ruleDetectedRisk);
 
