@@ -530,14 +530,14 @@ function hasAskedCenterUse(conversationHistory: ConversationMessage[]): boolean 
   );
 }
 
-function escalateRiskForEnvironment(risk: RiskLevel, detailState: RiskDetailState): RiskLevel {
+function escalateRiskForEnvironment(
+  risk: RiskLevel,
+  detailState: RiskDetailState
+): RiskLevel {
   const order: RiskLevel[] = ["low", "medium", "high", "imminent"];
   let idx = order.indexOf(risk);
 
-  if (detailState.isAlone && (risk === "medium" || risk === "high")) {
-    idx = Math.min(idx + 1, order.length - 1);
-  }
-
+  // 현재 자살 실행 의도와 구체적인 계획이 모두 확인된 경우
   if (detailState.hasCurrentIntent && detailState.hasPlan) {
     idx = Math.max(idx, order.indexOf("imminent"));
   }
