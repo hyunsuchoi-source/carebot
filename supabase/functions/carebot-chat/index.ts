@@ -157,9 +157,33 @@ function normalizeText(text: string) {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/**
+ * 명확히 부정된 위험 표현만 제거한다. 다른 문장의 위험 표현은 유지한다.
+ * 이 규칙은 임상적 의미 분석을 대체하지 않으며, 누적 대화의 시점도 구분하지 않는다.
+ */
+function excludeExplicitlyNegatedRiskExpressions(text: string): string {
+  const patterns: RegExp[] = [
+    /(?:지금|오늘|당장|계속|매일|맨날)?죽고싶(?:은|다는|단)?(?:생각|마음)?(?:은|이|도)?(?:전혀|별로)?없(?:어|어요|습니다|다|었|지만|는데)/g,
+    /(?:지금|오늘|당장|계속|매일|맨날)?죽고싶지않(?:아|아요|습니다|다|았)/g,
+    /(?:지금|오늘|당장)?자살(?:할|하고싶은|하고싶다는)?(?:생각|마음|의도)?(?:은|이|도)?없(?:어|어요|습니다|다)/g,
+    /자살(?:은|을)?안(?:할|해|합니다|하겠)/g,
+    /(?:지금|오늘|당장)?(?:죽을|죽으려는|자살할|해칠|실행할)(?:생각|마음|의도)(?:은|이|도)?없(?:어|어요|습니다|다)/g,
+    /(?:자해|자살|죽는|죽고싶은)(?:생각|마음)?(?:은|이)?있지만(?:실행|시도)?(?:하진|하지|안할|안하겠|않을)/g,
+    /(?:혼자있|혼자있는|지금혼자|집에혼자|방안에혼자)(?:지는|지는않|지않|는건아니|는것은아니)/g,
+    /(?:자살)?방법(?:을|은|이)?찾(?:아본|아보|은|지)?(?:적은|적이)?없(?:어|어요|습니다|다)/g,
+    /(?:계획|준비)(?:을|은|이)?(?:한|했|하)?(?:적은|적이)?없(?:어|어요|습니다|다)/g,
+    /(?:계획|준비)(?:하지않|안했|안하|한적없)/g,
+    /유서(?:를|는)?(?:쓴적|작성한적)?없(?:어|어요|습니다|다)/g,
+    /(?:계속|자꾸|매일|맨날)죽고싶(?:은|다는)?(?:건|것은|생각은)?아니(?:야|에요|예요|다)/g,
+  ];
+  let cleaned = normalizeText(text).replace(/\s/g, "");
+  for (const pattern of patterns) cleaned = cleaned.replace(pattern, " ");
+  return cleaned;
+}
+
 function detectRiskLevel(message: string): RiskLevel {
   const text = normalizeText(message);
-  const normalizedMessage = text.replace(/\s/g, "");
+  const normalizedMessage = excludeExplicitlyNegatedRiskExpressions(text);
 
   const imminentKeywords = [
     "지금죽고",
@@ -250,17 +274,6 @@ function detectRiskLevel(message: string): RiskLevel {
     "아무도없",
   ];
 
-  const negativeContext = [
-    "죽고싶지않",
-    "자살안할",
-    "생각은있지만안할",
-    "실행할생각은없",
-    "해치진않을",
-  ];
-
-  const hasNegativeContext = negativeContext.some((k) =>
-    normalizedMessage.includes(k.replace(/\s/g, ""))
-  );
 
 
 if (
@@ -279,10 +292,6 @@ if (
   return "high";
 }
 
-if (hasNegativeContext) {
-  return "low";
-}
-
 if (
   mediumKeywords.some(keyword =>
     normalizedMessage.includes(keyword.replace(/\s/g, ""))
@@ -296,7 +305,7 @@ return "low";
 
 function detectRiskDetailState(text: string): RiskDetailState {
   const normalized = normalizeText(text);
-  const normalizedText = normalized.replace(/\s/g, "");
+  const normalizedText = excludeExplicitlyNegatedRiskExpressions(normalized);
 
   const alonePatterns = [
     "혼자있어",
