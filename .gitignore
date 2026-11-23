@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Supabase CLI 로컬 상태 (자동 생성, 머신마다 다름)
+supabase/.temp/
+
+# 에디터 / 도구 부산물
+.Rhistory
+*.log
+
+# 의존성
+node_modules/
