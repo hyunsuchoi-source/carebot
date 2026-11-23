@@ -923,10 +923,6 @@ function detectAssessmentRisk(scores: LatestAssessmentScores): "low" | "medium" 
   return "low";
 }
 
-function buildImmediateSafetyReply(): string {
-  return "지금은 대화를 길게 이어가기보다 안전을 먼저 확보하는 것이 중요해요. 가능하면 바로 가까운 보호자나 주변 사람에게 알리고, 119나 109에 즉시 연락해 주세요. 혼자 계시다면 문을 열 수 있는 가까운 사람에게 바로 연락해 주세요.";
-}
-
 function isDontKnowLike(message: string): boolean {
   const text = normalizeText(message);
   return [
@@ -1341,7 +1337,11 @@ async function getLatestAssessmentScores(userId: string): Promise<LatestAssessme
     .order("assessed_at", { ascending: false });
 
   if (error) {
-    throw new Error(`Failed to load assessments: ${error.message}`);
+    // 검사 점수는 보조 신호입니다. 조회에 실패해도 상담 자체는 계속되어야 하므로
+    // 전체 요청을 실패시키지 않고 점수 없음으로 처리합니다.
+    // (텍스트 기반 위험 탐지는 그대로 동작합니다.)
+    console.error("❌ failed to load assessments:", error);
+    return { phq9: null, gad7: null, sbqr: null };
   }
 
   let phq9: number | null = null;
@@ -1450,7 +1450,7 @@ Deno.serve(async (req) => {
       session_start_time,
       miniAssessmentStage = "none",
       miniAssessmentScores = {},
-      miniAssessmentCompleted = false ,
+      miniAssessmentCompleted = false,
     }: {
       message?: string;
       centerName?: string;
@@ -1461,6 +1461,7 @@ Deno.serve(async (req) => {
       session_start_time?: string;
       miniAssessmentStage?: MiniAssessmentStage;
       miniAssessmentScores?: MiniAssessmentScores;
+      miniAssessmentCompleted?: boolean;
     } = await req.json();
    
 
