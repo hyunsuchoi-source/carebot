@@ -1510,7 +1510,6 @@ Deno.serve(async (req) => {
 
           ruleBasedHandled: false,
           linkageIntent: "none",
-          ruleBasedHandled: false,
           sessionStartTime: session_start_time ?? new Date().toISOString(),
         }),
         { status: 200, headers: corsHeaders }
@@ -1748,12 +1747,6 @@ Deno.serve(async (req) => {
         user_id: user_id,
         region : submittedRegionName,
         linkage_consent: true,
-        updated_at: new Date().toISOString(),
-      });
-
-      await supabase.from("patient_linkage_info").upsert({
-        user_id: user_id,
-        linkage_consent: false,
         updated_at: new Date().toISOString(),
       });
 
